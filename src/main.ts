@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { downloadUv, managedUvPath } from './uv.js';
 
 const run = promisify(execFile);
 
@@ -108,9 +109,8 @@ class PyController extends utils.Adapter {
             this.log.info(`Found uv: ${this.uvPath}`);
         } else {
             this.log.warn(
-                'uv not found on PATH and no path configured. Without uv a sufficiently ' +
-                    'recent system Python is required -- on Debian and Raspberry Pi that is ' +
-                    'regularly not the case.',
+                'uv is unavailable, so environments cannot be built. Either allow this adapter to ' +
+                    'download it, install it yourself, or configure the path to an existing copy.',
             );
         }
 
@@ -287,14 +287,19 @@ class PyController extends utils.Adapter {
     }
 
     /**
-     * Resolves uv: the configured path first, then PATH. Later: download on demand.
+     * Resolves uv: configured path, then PATH, then a copy this adapter fetched earlier, and
+     * failing all of those it downloads one.
      *
-     * The configured path matters more than it looks. `pip install uv` drops the
-     * executable into the user scripts directory, which is frequently not on
-     * PATH -- so searching PATH alone finds nothing even though uv is installed.
+     * The configured path matters more than it looks. `pip install uv` drops the executable into
+     * the user scripts directory, which is frequently not on PATH -- so searching PATH alone finds
+     * nothing even though uv is installed.
+     *
+     * Downloading last rather than first means an installation that already has uv keeps using it,
+     * including the version the user chose.
      */
     private async findUv(): Promise<string | null> {
         const configured = (this.config as { uvPath?: string }).uvPath?.trim();
+
         if (configured) {
             try {
                 await fs.access(configured);
@@ -305,11 +310,35 @@ class PyController extends utils.Adapter {
         }
 
         const probe = process.platform === 'win32' ? 'where' : 'which';
+
         try {
             const { stdout } = await run(probe, ['uv']);
             const first = stdout.split(/\r?\n/).find(Boolean);
-            return first ? first.trim() : null;
+
+            if (first) {
+                return first.trim();
+            }
         } catch {
+            // not on PATH, which is the normal case on a fresh system
+        }
+
+        const managed = managedUvPath(this.envRoot);
+
+        try {
+            await fs.access(managed);
+            return managed;
+        } catch {
+            // not fetched yet
+        }
+
+        if ((this.config as { downloadUv?: boolean }).downloadUv === false) {
+            return null;
+        }
+
+        try {
+            return await downloadUv(this.envRoot, (message) => this.log.info(message));
+        } catch (e) {
+            this.log.error(`Could not obtain uv: ${(e as Error).message}`);
             return null;
         }
     }

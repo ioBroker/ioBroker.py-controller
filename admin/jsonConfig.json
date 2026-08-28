@@ -15,6 +15,14 @@
       "sm": 12,
       "md": 6
     },
+    "downloadUv": {
+      "type": "checkbox",
+      "label": "Download uv automatically",
+      "help": "uv creates the virtual environments and brings its own Python interpreters. If it is not installed, this adapter fetches a pinned version into iobroker-data/py/.bin/.",
+      "newLine": true,
+      "sm": 12,
+      "md": 6
+    },
     "uvPath": {
       "type": "text",
       "label": "Path to uv",

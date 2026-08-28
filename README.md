@@ -19,6 +19,23 @@ A second process supervisor would reimplement restart backoff, crash counting
 and status reporting — with its own bugs, and without `iobroker start`, the
 instance list or multihost ever noticing those instances.
 
+## Getting uv
+
+`uv` creates the virtual environments and brings its own Python interpreters, which is what keeps an
+outdated distribution Python from blocking an adapter. On an ordinary system it is not installed, so
+this adapter obtains it:
+
+1. the path configured in the instance settings, if there is one
+2. `uv` on `PATH`
+3. a copy fetched earlier, in `iobroker-data/py/.bin/`
+4. otherwise it downloads a pinned version there
+
+The download comes from the GitHub release with the checksum verified, rather than by piping the
+vendor's install script into a shell: the version is pinned, and the binary lands somewhere this
+adapter can manage instead of in the user's `~/.local/bin`. Downloading is last in the order so an
+installation that already has `uv` keeps using the version its owner chose, and it can be switched
+off entirely in the settings.
+
 ## The contract with js-controller
 
 Exactly one direction, so the two never become entangled:

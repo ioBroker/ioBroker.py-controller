@@ -50,7 +50,8 @@
   },
   "native": {
     "autoBuildEnvironments": true,
-    "uvPath": ""
+    "uvPath": "",
+    "downloadUv": true
   },
   "objects": [],
   "instanceObjects": [
