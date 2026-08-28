@@ -39,9 +39,11 @@ A Python adapter is still shipped as an npm package: `io-package.json`,
 That keeps the repository, the repo checker, `iobroker add`, admin updates and
 backups working without a single change.
 
-The only new marker is `common.runtime: "python"`. js-controller decides from it
-how to start; this adapter decides what to build a venv for. Without the field,
-everything behaves exactly as before.
+The only change is `common.platform: "Python"` instead of the usual
+`Javascript/Node.js`. `platform` has always been the field describing what an adapter
+is written in: js-controller decides from it how to start, this adapter decides what to
+build a venv for. Every other adapter keeps its existing value and behaves exactly as
+before.
 
 ## Related
 

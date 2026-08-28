@@ -33,8 +33,13 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-/** Marker in io-package.json that identifies a Python adapter. */
-const RUNTIME_MARKER = 'python';
+/**
+ * Value of `common.platform` that identifies a Python adapter.
+ *
+ * `platform` has always been the field describing what an adapter is written in; until now its only
+ * value was `Javascript/Node.js`.
+ */
+const PYTHON_PLATFORM = 'python';
 
 /**
  * File written next to a virtual environment recording what it was built for.
@@ -131,7 +136,7 @@ class PyController extends utils.Adapter {
 
     /**
      * Finds installed adapters whose io-package.json carries
-     * `common.runtime: "python"`.
+     * `common.platform: "Python"`.
      *
      * Python adapters are still shipped as npm packages, which keeps the
      * repository, the repo checker, `iobroker add`, admin updates and backups
@@ -146,8 +151,10 @@ class PyController extends utils.Adapter {
 
         const seen = new Set<string>();
         for (const row of view?.rows ?? []) {
-            const common = row.value?.common as (ioBroker.InstanceCommon & { runtime?: string }) | undefined;
-            if (!common || common.runtime !== RUNTIME_MARKER) {
+            const common = row.value?.common;
+            // Case-insensitive: platform is hand-written and already wrong in the wild -- adapters
+            // shipping 'javascript/Node.js' instead of 'Javascript/Node.js' exist today.
+            if (common?.platform?.toLowerCase() !== PYTHON_PLATFORM) {
                 continue;
             }
             if (seen.has(common.name)) {
