@@ -72,8 +72,9 @@ class PyController extends utils.Adapter {
             this.log.info(`Found uv: ${this.uvPath}`);
         } else {
             this.log.warn(
-                'uv not found. Without it a sufficiently recent system Python is required -- ' +
-                    'on Debian and Raspberry Pi that is regularly not the case.',
+                'uv not found on PATH and no path configured. Without uv a sufficiently ' +
+                    'recent system Python is required -- on Debian and Raspberry Pi that is ' +
+                    'regularly not the case.',
             );
         }
 
@@ -136,8 +137,24 @@ class PyController extends utils.Adapter {
         return { name, dir, pythonDir: path.join(dir, 'python'), venvDir, interpreter, ready };
     }
 
-    /** Looks for uv on PATH. Later: download it on demand. */
+    /**
+     * Resolves uv: the configured path first, then PATH. Later: download on demand.
+     *
+     * The configured path matters more than it looks. `pip install uv` drops the
+     * executable into the user scripts directory, which is frequently not on
+     * PATH -- so searching PATH alone finds nothing even though uv is installed.
+     */
     private async findUv(): Promise<string | null> {
+        const configured = (this.config as { uvPath?: string }).uvPath?.trim();
+        if (configured) {
+            try {
+                await fs.access(configured);
+                return configured;
+            } catch {
+                this.log.warn(`Configured uv path does not exist: ${configured}`);
+            }
+        }
+
         const probe = process.platform === 'win32' ? 'where' : 'which';
         try {
             const { stdout } = await run(probe, ['uv']);
@@ -212,8 +229,10 @@ class PyController extends utils.Adapter {
     }
 }
 
-if (require.main !== module) {
-    module.exports = (options: Partial<utils.AdapterOptions> | undefined) => new PyController(options);
-} else {
-    (() => new PyController())();
-}
+// This package is ESM ("type": "module"), so the usual CommonJS dance --
+// `if (require.main !== module) module.exports = ...` -- is not available.
+// It exists only to support compact mode, where the controller loads an
+// adapter into its own process. Compact mode is off for this adapter
+// (io-package.json: compact=false), because it shells out to uv and should
+// not share a process with anything else.
+(() => new PyController())();

@@ -1,0 +1,27 @@
+{
+  "i18n": true,
+  "type": "panel",
+  "items": {
+    "_info": {
+      "type": "staticText",
+      "text": "This adapter manages Python environments. Processes are started by js-controller.",
+      "sm": 12
+    },
+    "autoBuildEnvironments": {
+      "type": "checkbox",
+      "label": "Build missing environments automatically",
+      "help": "Creates a venv as soon as a Python adapter is installed whose environment is missing.",
+      "newLine": true,
+      "sm": 12,
+      "md": 6
+    },
+    "uvPath": {
+      "type": "text",
+      "label": "Path to uv",
+      "help": "Leave empty to search PATH. uv ships its own interpreters, which avoids depending on an outdated system Python.",
+      "newLine": true,
+      "sm": 12,
+      "md": 6
+    }
+  }
+}

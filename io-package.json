@@ -3,12 +3,17 @@
     "name": "py-controller",
     "version": "0.0.1",
     "title": "Python Controller",
-    "titleLang": { "en": "Python Controller", "de": "Python Controller" },
+    "titleLang": {
+      "en": "Python Controller",
+      "de": "Python Controller"
+    },
     "desc": {
       "en": "Manages Python environments for Python adapters",
       "de": "Verwaltet Python-Umgebungen fuer Python-Adapter"
     },
-    "authors": ["bluefox <dogafox@gmail.com>"],
+    "authors": [
+      "bluefox <dogafox@gmail.com>"
+    ],
     "license": "MIT",
     "platform": "Javascript/Node.js",
     "mode": "daemon",
@@ -16,14 +21,32 @@
     "compact": false,
     "connectionType": "local",
     "dataSource": "assumption",
-    "adminUI": { "config": "json" },
-    "keywords": ["python", "venv", "uv"],
+    "adminUI": {
+      "config": "json"
+    },
+    "keywords": [
+      "python",
+      "venv",
+      "uv"
+    ],
     "main": "build/main.js",
-    "icon": "py-controller.png",
+    "icon": "py-controller.svg",
     "materialize": true,
     "type": "general",
-    "dependencies": [{ "js-controller": ">=7.0.0" }],
-    "news": { "0.0.1": { "en": "Initial skeleton", "de": "Erstes Geruest" } }
+    "dependencies": [
+      {
+        "js-controller": ">=7.0.0"
+      }
+    ],
+    "news": {
+      "0.0.1": {
+        "en": "Initial skeleton",
+        "de": "Erstes Geruest"
+      }
+    },
+    "supportedMessages": {
+      "custom": true
+    }
   },
   "native": {
     "autoBuildEnvironments": true,
@@ -34,7 +57,9 @@
     {
       "_id": "info",
       "type": "channel",
-      "common": { "name": "Information" },
+      "common": {
+        "name": "Information"
+      },
       "native": {}
     },
     {
