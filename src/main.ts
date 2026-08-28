@@ -26,6 +26,7 @@
 
 import * as utils from '@iobroker/adapter-core';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -35,19 +36,49 @@ const run = promisify(execFile);
 /** Marker in io-package.json that identifies a Python adapter. */
 const RUNTIME_MARKER = 'python';
 
+/**
+ * File written next to a virtual environment recording what it was built for.
+ *
+ * Without it an environment that has fallen behind its adapter is indistinguishable from a current
+ * one, and the adapter would run against dependencies resolved for an older version of itself --
+ * failing far away from the cause. js-controller reads the same file and refuses to start on a
+ * mismatch, which is how the "exists and matches" half of the contract is kept without the core
+ * having to understand Python packaging.
+ */
+const STAMP_FILE = 'environment.json';
+
+interface EnvironmentStamp {
+    /** `common.version` of the adapter the environment was built for */
+    adapterVersion: string;
+    /** Hash over pyproject.toml, so edits without a version bump are noticed too */
+    dependencyHash?: string;
+    /** When the environment was built, ISO 8601 */
+    builtAt?: string;
+    /** Version of the interpreter in the environment */
+    pythonVersion?: string;
+}
+
 interface PythonAdapterInfo {
     /** Adapter name without the "ioBroker." prefix */
     name: string;
+    /** Version of the installed adapter */
+    version: string;
     /** Directory of the installed npm package */
     dir: string;
     /** Directory holding pyproject.toml */
     pythonDir: string;
+    /** Root of this adapter's environment */
+    envDir: string;
     /** Target directory of the venv */
     venvDir: string;
     /** Interpreter inside the venv */
     interpreter: string;
-    /** Is the venv present and usable? */
+    /** Is the venv present and current? */
     ready: boolean;
+    /** The venv exists but was built for another adapter version or other dependencies */
+    stale: boolean;
+    /** What the environment was built for; null when there is no stamp */
+    stamp: EnvironmentStamp | null;
 }
 
 class PyController extends utils.Adapter {
@@ -81,7 +112,18 @@ class PyController extends utils.Adapter {
         const adapters = await this.discoverPythonAdapters();
         this.log.info(`Found ${adapters.length} Python adapter(s)`);
         for (const adapter of adapters) {
-            this.log.info(`  ${adapter.name}: venv ${adapter.ready ? 'ready' : 'missing'}`);
+            const state = adapter.ready
+                ? 'ready'
+                : !adapter.stale
+                  ? 'missing'
+                  : adapter.stamp === null
+                    ? 'unstamped'
+                    : `stale (built for ${adapter.stamp.adapterVersion})`;
+            this.log.info(`  ${adapter.name} ${adapter.version}: venv ${state}`);
+        }
+
+        if ((this.config as { autoBuildEnvironments?: boolean }).autoBuildEnvironments !== false) {
+            await this.reconcileEnvironments(adapters);
         }
 
         await this.setState('info.connection', true, true);
@@ -122,19 +164,119 @@ class PyController extends utils.Adapter {
         // with the layout differences between installation types. Guessing the
         // path here would only reproduce that logic badly.
         const dir = utils.commonTools.getAdapterDir(name) ?? '';
-        const venvDir = path.join(this.envRoot, name, 'venv');
-        const interpreter = path.join(
-            venvDir,
-            process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
-        );
-        let ready = false;
+        const pythonDir = path.join(dir, 'python');
+        const envDir = path.join(this.envRoot, name);
+        const venvDir = path.join(envDir, 'venv');
+        const interpreter = path.join(venvDir, process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+
+        const version = await this.readAdapterVersion(dir);
+        const stamp = await this.readStamp(envDir);
+        const dependencyHash = await this.hashDependencies(pythonDir);
+
+        let exists = false;
         try {
             await fs.access(interpreter);
-            ready = true;
+            exists = true;
         } catch {
-            ready = false;
+            exists = false;
         }
-        return { name, dir, pythonDir: path.join(dir, 'python'), venvDir, interpreter, ready };
+
+        // An environment without a stamp was built before stamping existed or by hand. It is
+        // rebuilt once so that every environment ends up stamped -- otherwise it would stay
+        // unstamped forever and no later version change would ever be noticed. The rebuild costs
+        // seconds and happens once per adapter; js-controller meanwhile still starts unstamped
+        // environments, so nothing goes down while this catches up.
+        const stale =
+            exists &&
+            (stamp === null ||
+                stamp.adapterVersion !== version ||
+                (stamp.dependencyHash !== undefined &&
+                    dependencyHash !== undefined &&
+                    stamp.dependencyHash !== dependencyHash));
+
+        return {
+            name,
+            version,
+            dir,
+            pythonDir,
+            envDir,
+            venvDir,
+            interpreter,
+            ready: exists && !stale,
+            stale,
+            stamp,
+        };
+    }
+
+    /**
+     * Read the installed adapter's version from its io-package.json
+     *
+     * @param adapterDir directory the adapter is installed in
+     */
+    private async readAdapterVersion(adapterDir: string): Promise<string> {
+        try {
+            const ioPack = JSON.parse(await fs.readFile(path.join(adapterDir, 'io-package.json'), 'utf8'));
+            return ioPack?.common?.version ?? '';
+        } catch {
+            return '';
+        }
+    }
+
+    /**
+     * Read the stamp of an already built environment
+     *
+     * @param envDir root of the adapter's environment
+     * @returns the stamp, or null when there is none or it cannot be read
+     */
+    private async readStamp(envDir: string): Promise<EnvironmentStamp | null> {
+        try {
+            const stamp: EnvironmentStamp = JSON.parse(await fs.readFile(path.join(envDir, STAMP_FILE), 'utf8'));
+            return typeof stamp?.adapterVersion === 'string' ? stamp : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Hash the adapter's dependency declaration
+     *
+     * Catches what the version alone misses: someone edits pyproject.toml without bumping the
+     * adapter version, which happens constantly while developing.
+     *
+     * @param pythonDir directory holding pyproject.toml
+     */
+    private async hashDependencies(pythonDir: string): Promise<string | undefined> {
+        try {
+            const content = await fs.readFile(path.join(pythonDir, 'pyproject.toml'));
+            return createHash('sha256').update(content).digest('hex').slice(0, 16);
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Record what an environment was built for, so it can later be told apart from a stale one
+     *
+     * @param info the adapter whose environment was just built
+     */
+    private async writeStamp(info: PythonAdapterInfo): Promise<void> {
+        let pythonVersion: string | undefined;
+
+        try {
+            const { stdout } = await run(info.interpreter, ['-c', 'import platform;print(platform.python_version())']);
+            pythonVersion = stdout.trim();
+        } catch {
+            pythonVersion = undefined;
+        }
+
+        const stamp: EnvironmentStamp = {
+            adapterVersion: info.version,
+            dependencyHash: await this.hashDependencies(info.pythonDir),
+            builtAt: new Date().toISOString(),
+            pythonVersion,
+        };
+
+        await fs.writeFile(path.join(info.envDir, STAMP_FILE), `${JSON.stringify(stamp, null, 2)}\n`);
     }
 
     /**
@@ -176,13 +318,85 @@ class PyController extends utils.Adapter {
         if (!this.uvPath) {
             throw new Error('uv is missing -- cannot build the environment');
         }
-        this.log.info(`Building environment for ${info.name} ...`);
-        await fs.mkdir(path.dirname(info.venvDir), { recursive: true });
-        await run(this.uvPath, ['venv', info.venvDir]);
-        await run(this.uvPath, ['pip', 'install', '--python', info.interpreter, '.'], {
+        this.log.info(`Building environment for ${info.name} ${info.version} ...`);
+        await fs.mkdir(info.envDir, { recursive: true });
+        // --clear, because uv refuses to touch an existing environment. A rebuild is meant to
+        // replace it: reusing one that was resolved for different dependencies is what this whole
+        // stamping mechanism exists to prevent.
+        await run(this.uvPath, ['venv', '--clear', info.venvDir]);
+        // --refresh, because uv caches the package index: a version published minutes ago is
+        // otherwise reported as non-existent.
+        await run(this.uvPath, ['pip', 'install', '--refresh', '--python', info.interpreter, '.'], {
             cwd: info.pythonDir,
         });
-        this.log.info(`Environment for ${info.name} is ready`);
+        // Only after the install succeeded -- a stamp written earlier would mark a half-built
+        // environment as current.
+        await this.writeStamp(info);
+        this.log.info(`Environment for ${info.name} ${info.version} is ready`);
+    }
+
+    /**
+     * Bring environments that are missing or out of date up to date
+     *
+     * @param adapters the adapters found on this host
+     */
+    private async reconcileEnvironments(adapters: PythonAdapterInfo[]): Promise<void> {
+        for (const adapter of adapters) {
+            if (adapter.ready) {
+                continue;
+            }
+
+            const why = !adapter.stale
+                ? 'missing'
+                : adapter.stamp === null
+                  ? 'unstamped'
+                  : `built for ${adapter.stamp.adapterVersion}, installed is ${adapter.version}`;
+
+            if (!this.uvPath) {
+                this.log.warn(`Environment for ${adapter.name} is ${why}, but uv is unavailable`);
+                continue;
+            }
+
+            try {
+                this.log.info(`Environment for ${adapter.name} is ${why} -- rebuilding`);
+                await this.buildEnvironment(adapter);
+                await this.restartInstancesOf(adapter.name);
+            } catch (e) {
+                this.log.error(`Could not build the environment for ${adapter.name}: ${(e as Error).message}`);
+            }
+        }
+    }
+
+    /**
+     * Restart the enabled instances of an adapter after its environment changed
+     *
+     * js-controller refuses to start a Python instance whose environment is missing or stale, so
+     * something has to nudge it once the environment is in place. Toggling `enabled` is the same
+     * mechanism the admin UI uses.
+     *
+     * @param adapterName name of the adapter without the `iobroker.` prefix
+     */
+    private async restartInstancesOf(adapterName: string): Promise<void> {
+        const view = await this.getObjectViewAsync('system', 'instance', {
+            startkey: `system.adapter.${adapterName}.`,
+            endkey: `system.adapter.${adapterName}.香`,
+        });
+
+        for (const row of view?.rows ?? []) {
+            const obj = row.value;
+
+            if (!obj?.common?.enabled) {
+                continue;
+            }
+
+            this.log.info(`Restarting ${obj._id} now that its environment is ready`);
+            await this.extendForeignObjectAsync(obj._id, {
+                common: { enabled: false },
+            });
+            await this.extendForeignObjectAsync(obj._id, {
+                common: { enabled: true },
+            });
+        }
     }
 
     private async onMessage(obj: ioBroker.Message): Promise<void> {
