@@ -1,0 +1,54 @@
+{
+  "common": {
+    "name": "py-controller",
+    "version": "0.0.1",
+    "title": "Python Controller",
+    "titleLang": { "en": "Python Controller", "de": "Python Controller" },
+    "desc": {
+      "en": "Manages Python environments for Python adapters",
+      "de": "Verwaltet Python-Umgebungen fuer Python-Adapter"
+    },
+    "authors": ["bluefox <dogafox@gmail.com>"],
+    "license": "MIT",
+    "platform": "Javascript/Node.js",
+    "mode": "daemon",
+    "enabled": false,
+    "compact": false,
+    "connectionType": "local",
+    "dataSource": "assumption",
+    "adminUI": { "config": "json" },
+    "keywords": ["python", "venv", "uv"],
+    "main": "build/main.js",
+    "icon": "py-controller.png",
+    "materialize": true,
+    "type": "general",
+    "dependencies": [{ "js-controller": ">=7.0.0" }],
+    "news": { "0.0.1": { "en": "Initial skeleton", "de": "Erstes Geruest" } }
+  },
+  "native": {
+    "autoBuildEnvironments": true,
+    "uvPath": ""
+  },
+  "objects": [],
+  "instanceObjects": [
+    {
+      "_id": "info",
+      "type": "channel",
+      "common": { "name": "Information" },
+      "native": {}
+    },
+    {
+      "_id": "info.connection",
+      "type": "state",
+      "common": {
+        "role": "indicator.connected",
+        "name": "Bereit",
+        "type": "boolean",
+        "read": true,
+        "write": false,
+        "def": false
+      },
+      "native": {}
+    }
+  ]
+}

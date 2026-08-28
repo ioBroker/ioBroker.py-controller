@@ -1,0 +1,25 @@
+{
+  "name": "iobroker.py-controller",
+  "version": "0.0.1",
+  "description": "Verwaltet Python-Umgebungen fuer Python-Adapter in ioBroker",
+  "author": { "name": "bluefox", "email": "dogafox@gmail.com" },
+  "license": "MIT",
+  "type": "module",
+  "main": "build/main.js",
+  "engines": { "node": ">=20" },
+  "keywords": ["ioBroker", "python", "venv", "uv"],
+  "repository": { "type": "git", "url": "https://github.com/ioBroker/ioBroker.py-controller" },
+  "dependencies": {
+    "@iobroker/adapter-core": "^3.2.3"
+  },
+  "devDependencies": {
+    "@iobroker/types": "^7.0.6",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -p tsconfig.build.json --watch"
+  },
+  "files": ["build/", "admin/", "io-package.json", "LICENSE"]
+}
