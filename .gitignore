@@ -2,3 +2,4 @@ node_modules/
 build/
 *.log
 .venv/
+package-lock.json

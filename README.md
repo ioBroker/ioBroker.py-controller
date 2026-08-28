@@ -1,53 +1,53 @@
 # ioBroker.py-controller
 
-Verwaltet Python-**Umgebungen** für Python-Adapter — Interpreter beschaffen,
-venv je Adapter anlegen und reparieren, Pakete installieren, Zustand anzeigen.
+Manages Python **environments** for Python adapters — provisioning interpreters,
+creating and repairing a venv per adapter, installing packages, showing state.
 
-> **Status: 0.0.1, Gerüst.** Noch nicht lauffähig als Adapter.
+> **Status: 0.0.1, skeleton.** Not yet runnable as an adapter.
 
-## Der Zuschnitt
+## The split
 
-Dieser Adapter verwaltet **keine Prozesse**. Die Prozesshoheit bleibt beim
-js-controller: er startet, überwacht und stoppt Python-Adapter genauso wie
-Node-Adapter. Das ist möglich, weil sein Startpfad weit sprachneutraler ist als
-er aussieht — der Stopp läuft über den `sigKill`-State, `alive`/`uptime`
-schreibt der Adapter selbst, stdout wird ohnehin verworfen, und der IPC-Kanal
-wird nirgends benutzt. Node-spezifisch sind im Wesentlichen nur die beiden
-`cp.fork`-Aufrufstellen und die Auflösung der Startdatei.
+This adapter manages **no processes**. Process ownership stays with
+js-controller: it starts, supervises and stops Python adapters exactly the way
+it does Node adapters. That is possible because its start path is far more
+language-neutral than it looks — stopping goes through the `sigKill` state,
+`alive`/`uptime` are written by the adapter itself, stdout is discarded anyway,
+and the IPC channel is never used. What is genuinely Node-specific amounts to
+the two `cp.fork` call sites and the main-file resolution.
 
-Ein zweiter Prozess-Supervisor würde Neustart-Backoff, Absturzzählung und
-Statusmeldung ein zweites Mal implementieren — mit eigenen Fehlern, und ohne
-dass `iobroker start`, die Instanzliste oder Multihost etwas davon mitbekämen.
+A second process supervisor would reimplement restart backoff, crash counting
+and status reporting — with its own bugs, and without `iobroker start`, the
+instance list or multihost ever noticing those instances.
 
-## Der Vertrag zum js-controller
+## The contract with js-controller
 
-Genau eine Richtung, damit es keine Verschränkung gibt:
+Exactly one direction, so the two never become entangled:
 
-> Der js-controller startet eine Python-Instanz nur, wenn ihr venv unter
-> `iobroker-data/py/<name>/` existiert und zur geforderten Paketversion passt.
-> Fehlt oder hinkt es, wird nicht gestartet, sondern ein Fehlerzustand gesetzt.
-> Der py-controller beobachtet den Zustand, baut die Umgebung und stößt den
-> Neustart an.
+> js-controller starts a Python instance only when its venv exists under
+> `iobroker-data/py/<name>/` and matches the required package version. If it is
+> missing or stale, the instance is not started and an error state is set
+> instead. py-controller watches that state, builds the environment and
+> triggers the restart.
 
-Damit muss der Kern nichts über `pip`, `uv` oder Paketauflösung wissen — nur,
-ob ein Verzeichnis da ist.
+This way the core needs to know nothing about `pip`, `uv` or dependency
+resolution — only whether a directory is there.
 
-## Verteilung von Python-Adaptern
+## Distributing Python adapters
 
-Ein Python-Adapter wird trotzdem als npm-Paket ausgeliefert: `io-package.json`,
-`admin/jsonConfig.json` und ein Verzeichnis `python/` mit `pyproject.toml`.
-Damit funktionieren Repository, Repo-Checker, `iobroker add`, Admin-Update und
-Backup ohne eine einzige Änderung.
+A Python adapter is still shipped as an npm package: `io-package.json`,
+`admin/jsonConfig.json` and a `python/` directory containing `pyproject.toml`.
+That keeps the repository, the repo checker, `iobroker add`, admin updates and
+backups working without a single change.
 
-Der einzige neue Marker ist `common.runtime: "python"`. Der js-controller
-entscheidet daran, wie er startet; dieser Adapter, wofür er ein venv baut.
-Fehlt das Feld, läuft alles exakt wie bisher.
+The only new marker is `common.runtime: "python"`. js-controller decides from it
+how to start; this adapter decides what to build a venv for. Without the field,
+everything behaves exactly as before.
 
-## Verwandt
+## Related
 
-- [iobroker-python](https://github.com/ioBroker/iobroker-python) — das SDK, mit
-  dem Python-Adapter geschrieben werden.
+- [iobroker-python](https://github.com/ioBroker/iobroker-python) — the SDK used
+  to write Python adapters.
 
-## Lizenz
+## License
 
 MIT

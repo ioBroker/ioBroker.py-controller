@@ -1,27 +1,27 @@
 /**
  * ioBroker.py-controller
  *
- * Verwaltet Python-*Umgebungen* -- nicht Python-*Prozesse*.
+ * Manages Python *environments* -- not Python *processes*.
  *
- * Die Prozesshoheit bleibt beim js-controller: er startet, ueberwacht und
- * stoppt Python-Adapter genauso wie Node-Adapter. Der Stopp-Weg ueber den
- * `sigKill`-State, die `alive`/`uptime`-Telemetrie und die Neustart-Logik sind
- * bereits sprachneutral; es fehlt dort nur der Zweig, der statt `node` einen
- * Interpreter aus dem venv startet.
+ * Process ownership stays with js-controller: it starts, supervises and stops
+ * Python adapters exactly the way it does Node adapters. The stop path through
+ * the `sigKill` state, the `alive`/`uptime` telemetry and the restart logic are
+ * already language-neutral; all that is missing there is the branch that spawns
+ * an interpreter from the venv instead of `node`.
  *
- * Dieser Adapter uebernimmt das, was im Kern nichts zu suchen hat: Interpreter
- * beschaffen, venv je Adapter anlegen und reparieren, Pakete installieren,
- * Zustand in der Admin anzeigen.
+ * This adapter takes on what has no business being in the core: provisioning
+ * interpreters, creating and repairing a venv per adapter, installing packages,
+ * showing state in the admin UI.
  *
- * Der Vertrag zwischen beiden hat genau eine Richtung:
+ * The contract between the two runs in exactly one direction:
  *
- *   js-controller startet eine Python-Instanz nur, wenn ihr venv existiert und
- *   zur geforderten Paketversion passt. Fehlt oder hinkt es, wird nicht
- *   gestartet, sondern ein Fehlerzustand gesetzt. Dieser Adapter beobachtet den
- *   Zustand, baut die Umgebung und stoesst den Neustart an.
+ *   js-controller starts a Python instance only when its venv exists and
+ *   matches the required package version. If it is missing or stale, the
+ *   instance is not started and an error state is set instead. This adapter
+ *   watches that state, builds the environment and triggers the restart.
  *
- * Damit muss der Kern nichts ueber pip, uv oder Paketaufloesung wissen --
- * nur, ob ein Verzeichnis da ist.
+ * That way the core needs to know nothing about pip, uv or dependency
+ * resolution -- only whether a directory is there.
  */
 
 import * as utils from '@iobroker/adapter-core';
@@ -32,28 +32,28 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
-/** Marker im io-package.json, an dem ein Python-Adapter erkannt wird. */
+/** Marker in io-package.json that identifies a Python adapter. */
 const RUNTIME_MARKER = 'python';
 
 interface PythonAdapterInfo {
-    /** Adaptername ohne "ioBroker."-Praefix */
+    /** Adapter name without the "ioBroker." prefix */
     name: string;
-    /** Verzeichnis des installierten npm-Pakets */
+    /** Directory of the installed npm package */
     dir: string;
-    /** Verzeichnis mit pyproject.toml */
+    /** Directory holding pyproject.toml */
     pythonDir: string;
-    /** Zielverzeichnis des venv */
+    /** Target directory of the venv */
     venvDir: string;
-    /** Interpreter im venv */
+    /** Interpreter inside the venv */
     interpreter: string;
-    /** venv vorhanden und benutzbar? */
+    /** Is the venv present and usable? */
     ready: boolean;
 }
 
 class PyController extends utils.Adapter {
-    /** Wurzel aller verwalteten Umgebungen: iobroker-data/py/<adapter>/ */
+    /** Root of all managed environments: iobroker-data/py/<adapter>/ */
     private envRoot = '';
-    /** Pfad zu uv, sofern gefunden oder selbst installiert */
+    /** Path to uv, if found or self-installed */
     private uvPath: string | null = null;
 
     public constructor(options: Partial<utils.AdapterOptions> = {}) {
@@ -69,29 +69,30 @@ class PyController extends utils.Adapter {
 
         this.uvPath = await this.findUv();
         if (this.uvPath) {
-            this.log.info(`uv gefunden: ${this.uvPath}`);
+            this.log.info(`Found uv: ${this.uvPath}`);
         } else {
             this.log.warn(
-                'uv nicht gefunden. Ohne uv muss ein ausreichend neues System-Python vorhanden sein -- ' +
-                    'auf Debian und Raspberry ist das regelmaessig nicht der Fall.',
+                'uv not found. Without it a sufficiently recent system Python is required -- ' +
+                    'on Debian and Raspberry Pi that is regularly not the case.',
             );
         }
 
         const adapters = await this.discoverPythonAdapters();
-        this.log.info(`${adapters.length} Python-Adapter gefunden`);
+        this.log.info(`Found ${adapters.length} Python adapter(s)`);
         for (const adapter of adapters) {
-            this.log.info(`  ${adapter.name}: venv ${adapter.ready ? 'bereit' : 'fehlt'}`);
+            this.log.info(`  ${adapter.name}: venv ${adapter.ready ? 'ready' : 'missing'}`);
         }
 
         await this.setState('info.connection', true, true);
     }
 
     /**
-     * Sucht installierte Adapter, deren io-package.json `common.runtime: "python"` traegt.
+     * Finds installed adapters whose io-package.json carries
+     * `common.runtime: "python"`.
      *
-     * Python-Adapter werden weiterhin als npm-Paket ausgeliefert -- damit
-     * funktionieren Repository, Repo-Checker, `iobroker add`, Admin-Update und
-     * Backup unveraendert. Nur der Startpfad ist ein anderer.
+     * Python adapters are still shipped as npm packages, which keeps the
+     * repository, the repo checker, `iobroker add`, admin updates and backups
+     * working unchanged. Only the start path differs.
      */
     private async discoverPythonAdapters(): Promise<PythonAdapterInfo[]> {
         const found: PythonAdapterInfo[] = [];
@@ -103,7 +104,7 @@ class PyController extends utils.Adapter {
         const seen = new Set<string>();
         for (const row of view?.rows ?? []) {
             const common = row.value?.common as (ioBroker.InstanceCommon & { runtime?: string }) | undefined;
-            if (!common || (common as { runtime?: string }).runtime !== RUNTIME_MARKER) {
+            if (!common || common.runtime !== RUNTIME_MARKER) {
                 continue;
             }
             if (seen.has(common.name)) {
@@ -116,9 +117,10 @@ class PyController extends utils.Adapter {
     }
 
     private async describeAdapter(name: string): Promise<PythonAdapterInfo> {
-        const dir = utils.getAbsoluteDefaultDataDir
-            ? path.join(utils.controllerDir, 'node_modules', `iobroker.${name}`)
-            : '';
+        // js-controller already knows where an adapter is installed and copes
+        // with the layout differences between installation types. Guessing the
+        // path here would only reproduce that logic badly.
+        const dir = utils.commonTools.getAdapterDir(name) ?? '';
         const venvDir = path.join(this.envRoot, name, 'venv');
         const interpreter = path.join(
             venvDir,
@@ -134,7 +136,7 @@ class PyController extends utils.Adapter {
         return { name, dir, pythonDir: path.join(dir, 'python'), venvDir, interpreter, ready };
     }
 
-    /** Sucht uv im PATH. Spaeter: bei Bedarf selbst herunterladen. */
+    /** Looks for uv on PATH. Later: download it on demand. */
     private async findUv(): Promise<string | null> {
         const probe = process.platform === 'win32' ? 'where' : 'which';
         try {
@@ -147,23 +149,23 @@ class PyController extends utils.Adapter {
     }
 
     /**
-     * Legt das venv eines Adapters an und installiert seine Abhaengigkeiten.
+     * Creates an adapter's venv and installs its dependencies.
      *
-     * Ein venv je Adapter, nicht je Instanz: die Isolation soll gegen
-     * Versionskonflikte zwischen Adaptern schuetzen, nicht zwischen Instanzen
-     * desselben Adapters.
+     * One venv per adapter, not per instance: the isolation is meant to guard
+     * against version conflicts between adapters, not between instances of the
+     * same adapter.
      */
     private async buildEnvironment(info: PythonAdapterInfo): Promise<void> {
         if (!this.uvPath) {
-            throw new Error('uv fehlt -- Umgebung kann nicht gebaut werden');
+            throw new Error('uv is missing -- cannot build the environment');
         }
-        this.log.info(`Baue Umgebung fuer ${info.name} ...`);
+        this.log.info(`Building environment for ${info.name} ...`);
         await fs.mkdir(path.dirname(info.venvDir), { recursive: true });
         await run(this.uvPath, ['venv', info.venvDir]);
         await run(this.uvPath, ['pip', 'install', '--python', info.interpreter, '.'], {
             cwd: info.pythonDir,
         });
-        this.log.info(`Umgebung fuer ${info.name} steht`);
+        this.log.info(`Environment for ${info.name} is ready`);
     }
 
     private async onMessage(obj: ioBroker.Message): Promise<void> {
@@ -179,7 +181,7 @@ class PyController extends utils.Adapter {
             case 'rebuild': {
                 const name = (obj.message as { name?: string })?.name;
                 if (!name) {
-                    this.reply(obj, { error: 'Kein Adaptername angegeben' });
+                    this.reply(obj, { error: 'No adapter name given' });
                     return;
                 }
                 try {
@@ -191,7 +193,7 @@ class PyController extends utils.Adapter {
                 break;
             }
             default:
-                this.log.warn(`Unbekanntes Kommando: ${obj.command}`);
+                this.log.warn(`Unknown command: ${obj.command}`);
         }
     }
 
