@@ -51,7 +51,8 @@
   "native": {
     "autoBuildEnvironments": true,
     "uvPath": "",
-    "downloadUv": true
+    "downloadUv": true,
+    "editableInstall": "auto"
   },
   "objects": [],
   "instanceObjects": [

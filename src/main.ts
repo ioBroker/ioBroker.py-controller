@@ -59,6 +59,8 @@ const STAMP_FILE = 'environment.json';
 interface EnvironmentStamp {
     /** `common.version` of the adapter the environment was built for */
     adapterVersion: string;
+    /** Whether the package was installed editable, i.e. linked to its sources */
+    editable?: boolean;
     /** Hash over pyproject.toml, so edits without a version bump are noticed too */
     dependencyHash?: string;
     /** When the environment was built, ISO 8601 */
@@ -88,6 +90,8 @@ interface PythonAdapterInfo {
     stale: boolean;
     /** What the environment was built for; null when there is no stamp */
     stamp: EnvironmentStamp | null;
+    /** Install the package linked to its sources rather than copied */
+    editable: boolean;
 }
 
 class PyController extends utils.Adapter {
@@ -256,6 +260,7 @@ class PyController extends utils.Adapter {
         const version = await this.readAdapterVersion(dir);
         const stamp = await this.readStamp(envDir);
         const dependencyHash = await this.hashDependencies(pythonDir);
+        const editable = await this.wantsEditable(dir);
 
         let exists = false;
         try {
@@ -274,6 +279,9 @@ class PyController extends utils.Adapter {
             exists &&
             (stamp === null ||
                 stamp.adapterVersion !== version ||
+                // Switching a working copy in or out has to rebuild: a copied install keeps
+                // serving the old sources, an editable one points at a directory that may be gone.
+                Boolean(stamp.editable) !== editable ||
                 (stamp.dependencyHash !== undefined &&
                     dependencyHash !== undefined &&
                     stamp.dependencyHash !== dependencyHash));
@@ -289,7 +297,42 @@ class PyController extends utils.Adapter {
             ready: exists && !stale,
             stale,
             stamp,
+            editable,
         };
+    }
+
+    /**
+     * Decide whether an adapter should be installed linked to its sources
+     *
+     * A copied install serves the copy: editing the adapter's Python sources changes nothing until
+     * the package is reinstalled, which turns every edit into a three step cycle. An editable
+     * install removes that.
+     *
+     * It is not the right default for a production installation though -- it ties the environment
+     * to a directory that may be deleted, and reinstalling is what makes a version reproducible.
+     * So it is decided by how the adapter got there: a symlinked directory is a working copy, the
+     * pattern every ioBroker developer already uses. Windows junctions count, which Node reports
+     * as symbolic links (verified) -- and those are exactly what `link.bat` creates.
+     *
+     * The setting overrides the detection in both directions.
+     *
+     * @param adapterDir directory the adapter is installed in
+     */
+    private async wantsEditable(adapterDir: string): Promise<boolean> {
+        const configured = (this.config as { editableInstall?: string }).editableInstall;
+
+        if (configured === 'always') {
+            return true;
+        }
+        if (configured === 'never') {
+            return false;
+        }
+
+        try {
+            return (await fs.lstat(adapterDir)).isSymbolicLink();
+        } catch {
+            return false;
+        }
     }
 
     /**
@@ -355,6 +398,7 @@ class PyController extends utils.Adapter {
 
         const stamp: EnvironmentStamp = {
             adapterVersion: info.version,
+            editable: info.editable,
             dependencyHash: await this.hashDependencies(info.pythonDir),
             builtAt: new Date().toISOString(),
             pythonVersion,
@@ -431,7 +475,9 @@ class PyController extends utils.Adapter {
         if (!this.uvPath) {
             throw new Error('uv is missing -- cannot build the environment');
         }
-        this.log.info(`Building environment for ${info.name} ${info.version} ...`);
+        this.log.info(
+            `Building environment for ${info.name} ${info.version}${info.editable ? ' (editable, linked to its sources)' : ''} ...`,
+        );
         await fs.mkdir(info.envDir, { recursive: true });
         // --clear, because uv refuses to touch an existing environment. A rebuild is meant to
         // replace it: reusing one that was resolved for different dependencies is what this whole
@@ -439,9 +485,15 @@ class PyController extends utils.Adapter {
         await run(this.uvPath, ['venv', '--clear', info.venvDir]);
         // --refresh, because uv caches the package index: a version published minutes ago is
         // otherwise reported as non-existent.
-        await run(this.uvPath, ['pip', 'install', '--refresh', '--python', info.interpreter, '.'], {
-            cwd: info.pythonDir,
-        });
+        const install = ['pip', 'install', '--refresh', '--python', info.interpreter];
+
+        if (info.editable) {
+            install.push('-e');
+        }
+
+        install.push('.');
+
+        await run(this.uvPath, install, { cwd: info.pythonDir });
         // Only after the install succeeded -- a stamp written earlier would mark a half-built
         // environment as current.
         await this.writeStamp(info);

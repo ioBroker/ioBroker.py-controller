@@ -30,6 +30,28 @@
       "newLine": true,
       "sm": 12,
       "md": 6
+    },
+    "editableInstall": {
+      "type": "select",
+      "label": "Install linked to sources",
+      "help": "An editable install lets edits to an adapter's Python sources take effect on the next restart, instead of only after reinstalling. 'Automatic' turns it on for adapters whose directory is a symlink or junction, which is how a working copy is linked into an installation.",
+      "options": [
+        {
+          "label": "Automatic (working copies only)",
+          "value": "auto"
+        },
+        {
+          "label": "Always",
+          "value": "always"
+        },
+        {
+          "label": "Never",
+          "value": "never"
+        }
+      ],
+      "newLine": true,
+      "sm": 12,
+      "md": 6
     }
   }
 }

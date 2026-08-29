@@ -36,6 +36,23 @@ adapter can manage instead of in the user's `~/.local/bin`. Downloading is last 
 installation that already has `uv` keeps using the version its owner chose, and it can be switched
 off entirely in the settings.
 
+## Working on a Python adapter
+
+A copied install serves the copy: editing an adapter's Python sources changes nothing until the
+package is reinstalled, which turns every edit into edit → reinstall → restart.
+
+This adapter therefore installs *linked to the sources* when the adapter's directory is a symlink or
+a junction — which is exactly how a working copy is put into an installation, and what `link.bat`
+creates on Windows. Node reports junctions as symbolic links, so the same detection covers both
+platforms. Edits then take effect on the next restart.
+
+It is deliberately not the default for a normal installation: an editable install ties the
+environment to a directory that may be deleted, and reinstalling is what makes a version
+reproducible. The setting overrides the detection in either direction.
+
+Switching a working copy in or out rebuilds the environment, because a copied install would keep
+serving the old sources and an editable one would point at a directory that is gone.
+
 ## The contract with js-controller
 
 Exactly one direction, so the two never become entangled:
