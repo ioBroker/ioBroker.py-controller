@@ -42,6 +42,9 @@ const run = promisify(execFile);
  */
 const PYTHON_PLATFORM = 'python';
 
+/** Prefix every adapter and instance object carries. */
+const SYSTEM_ADAPTER_PREFIX = 'system.adapter.';
+
 /**
  * File written next to a virtual environment recording what it was built for.
  *
@@ -92,11 +95,16 @@ class PyController extends utils.Adapter {
     private envRoot = '';
     /** Path to uv, if found or self-installed */
     private uvPath: string | null = null;
+    /** Collects a burst of object changes into a single pass */
+    private reconcileTimer: NodeJS.Timeout | null = null;
+    /** Guards against a second pass starting while one is still running */
+    private reconciling = false;
 
     public constructor(options: Partial<utils.AdapterOptions> = {}) {
         super({ ...options, name: 'py-controller' });
         this.on('ready', this.onReady.bind(this));
         this.on('message', this.onMessage.bind(this));
+        this.on('objectChange', this.onObjectChange.bind(this));
         this.on('unload', this.onUnload.bind(this));
     }
 
@@ -131,7 +139,76 @@ class PyController extends utils.Adapter {
             await this.reconcileEnvironments(adapters);
         }
 
+        // Without this, installing a Python adapter did nothing until py-controller happened to be
+        // restarted: js-controller refused to start the instance for a missing environment, and
+        // nobody was listening for the adapter that had just appeared. A silent dead end.
+        await this.subscribeForeignObjectsAsync(`${SYSTEM_ADAPTER_PREFIX}*`);
+
         await this.setState('info.connection', true, true);
+    }
+
+    /**
+     * React to an adapter appearing, changing version or becoming a Python adapter
+     *
+     * @param id the object that changed
+     * @param obj its new content, or null when it was deleted
+     */
+    private onObjectChange(id: string, obj: ioBroker.Object | null | undefined): void {
+        if (!id.startsWith(SYSTEM_ADAPTER_PREFIX) || !obj) {
+            return;
+        }
+
+        const common = obj.common as (ioBroker.AdapterCommon & { platform?: string }) | undefined;
+
+        if (common?.platform?.toLowerCase() !== PYTHON_PLATFORM) {
+            return;
+        }
+
+        this.scheduleReconcile();
+    }
+
+    /**
+     * Run a reconcile pass shortly, collapsing a burst of changes into one
+     *
+     * `iobroker add` writes the adapter object and every instance object in quick succession, and
+     * restarting an instance writes it twice more. Reacting to each one would rebuild the same
+     * environment repeatedly.
+     */
+    private scheduleReconcile(): void {
+        if (this.reconcileTimer) {
+            clearTimeout(this.reconcileTimer);
+        }
+
+        this.reconcileTimer = setTimeout(() => {
+            this.reconcileTimer = null;
+            void this.reconcileNow();
+        }, 2_000);
+    }
+
+    /** Discover adapters and bring their environments up to date. */
+    private async reconcileNow(): Promise<void> {
+        if (this.reconciling) {
+            // Building an environment takes seconds, during which more changes arrive. Letting a
+            // second pass in would run uv against the same directory twice.
+            this.scheduleReconcile();
+            return;
+        }
+
+        this.reconciling = true;
+
+        try {
+            const adapters = await this.discoverPythonAdapters();
+
+            // Everything already current is the normal case here, and saying so on every object
+            // change would drown the log.
+            if (adapters.some((adapter) => !adapter.ready)) {
+                await this.reconcileEnvironments(adapters);
+            }
+        } catch (e) {
+            this.log.error(`Reconcile failed: ${(e as Error).message}`);
+        } finally {
+            this.reconciling = false;
+        }
     }
 
     /**
@@ -145,8 +222,8 @@ class PyController extends utils.Adapter {
     private async discoverPythonAdapters(): Promise<PythonAdapterInfo[]> {
         const found: PythonAdapterInfo[] = [];
         const view = await this.getObjectViewAsync('system', 'instance', {
-            startkey: 'system.adapter.',
-            endkey: 'system.adapter.香',
+            startkey: SYSTEM_ADAPTER_PREFIX,
+            endkey: `${SYSTEM_ADAPTER_PREFIX}香`,
         });
 
         const seen = new Set<string>();
@@ -414,8 +491,8 @@ class PyController extends utils.Adapter {
      */
     private async restartInstancesOf(adapterName: string): Promise<void> {
         const view = await this.getObjectViewAsync('system', 'instance', {
-            startkey: `system.adapter.${adapterName}.`,
-            endkey: `system.adapter.${adapterName}.香`,
+            startkey: `${SYSTEM_ADAPTER_PREFIX}${adapterName}.`,
+            endkey: `${SYSTEM_ADAPTER_PREFIX}${adapterName}.香`,
         });
 
         for (const row of view?.rows ?? []) {
@@ -472,6 +549,10 @@ class PyController extends utils.Adapter {
 
     private onUnload(callback: () => void): void {
         try {
+            if (this.reconcileTimer) {
+                clearTimeout(this.reconcileTimer);
+                this.reconcileTimer = null;
+            }
             callback();
         } catch {
             callback();
