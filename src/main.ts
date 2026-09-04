@@ -30,6 +30,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { runCheck } from './check.js';
 import { downloadUv, managedUvPath } from './uv.js';
 
 const run = promisify(execFile);
@@ -417,8 +418,11 @@ class PyController extends utils.Adapter {
      *
      * Downloading last rather than first means an installation that already has uv keeps using it,
      * including the version the user chose.
+     *
+     * @param allowDownload whether uv may be fetched when it is missing; the readiness check passes
+     * false, because a check that installs something cannot report what was already there
      */
-    private async findUv(): Promise<string | null> {
+    private async findUv(allowDownload = true): Promise<string | null> {
         const configured = (this.config as { uvPath?: string }).uvPath?.trim();
 
         if (configured) {
@@ -452,7 +456,7 @@ class PyController extends utils.Adapter {
             // not fetched yet
         }
 
-        if ((this.config as { downloadUv?: boolean }).downloadUv === false) {
+        if (!allowDownload || (this.config as { downloadUv?: boolean }).downloadUv === false) {
             return null;
         }
 
@@ -588,9 +592,52 @@ class PyController extends utils.Adapter {
                 }
                 break;
             }
+            case 'check': {
+                this.reply(obj, {
+                    copyDialog: {
+                        title: 'Python prerequisites',
+                        type: 'yaml',
+                        text: (await this.check()).report,
+                    },
+                });
+                break;
+            }
             default:
                 this.log.warn(`Unknown command: ${obj.command}`);
         }
+    }
+
+    /**
+     * Collect everything the readiness check needs, without changing anything.
+     *
+     * `findUv(false)` on purpose: the check may look for uv but must not fetch it. Otherwise
+     * pressing "check" would install something, and the answer to "is uv present?" would always be
+     * yes the second time.
+     */
+    private async check(): Promise<{ ok: boolean; report: string }> {
+        const uvPath = await this.findUv(false);
+        let uvVersion: string | null = null;
+
+        if (uvPath) {
+            try {
+                const { stdout } = await run(uvPath, ['--version']);
+                uvVersion = stdout.trim();
+            } catch (e) {
+                this.log.warn(`uv found at ${uvPath} but not runnable: ${(e as Error).message}`);
+            }
+        }
+
+        const outcome = await runCheck({
+            envRoot: this.envRoot,
+            uvPath,
+            uvVersion,
+            mayDownloadUv: (this.config as { downloadUv?: boolean }).downloadUv !== false,
+            adapters: await this.discoverPythonAdapters(),
+        });
+
+        this.log[outcome.ok ? 'info' : 'warn'](`Prerequisite check: ${outcome.ok ? 'ok' : 'problems found'}`);
+
+        return outcome;
     }
 
     private reply(obj: ioBroker.Message, payload: unknown): void {

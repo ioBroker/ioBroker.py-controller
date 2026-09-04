@@ -7,6 +7,18 @@
       "text": "This adapter manages Python environments. Processes are started by js-controller.",
       "sm": 12
     },
+    "_check": {
+      "type": "sendto",
+      "command": "check",
+      "label": "Check prerequisites",
+      "title": "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter. Changes nothing.",
+      "variant": "contained",
+      "showProcess": true,
+      "timeout": 30000,
+      "newLine": true,
+      "sm": 12,
+      "md": 6
+    },
     "autoBuildEnvironments": {
       "type": "checkbox",
       "label": "Build missing environments automatically",
