@@ -2,19 +2,33 @@
   "common": {
     "name": "py-controller",
     "version": "0.0.1",
-    "title": "Python Controller",
     "titleLang": {
       "en": "Python Controller",
-      "de": "Python Controller"
+      "de": "Python Controller",
+      "ru": "Python Controller",
+      "pt": "Controlador Python",
+      "nl": "Python Controller",
+      "fr": "Contrôleur Python",
+      "it": "Controller Python",
+      "es": "Controlador de Python",
+      "pl": "Kontroler Pythona",
+      "zh-cn": "Python控制器"
     },
     "desc": {
       "en": "Manages Python environments for Python adapters",
-      "de": "Verwaltet Python-Umgebungen fuer Python-Adapter"
+      "de": "Verwaltet Python-Umgebungen für Python-Adapter",
+      "ru": "Управляет средами Python для адаптеров Python",
+      "pt": "Gerencia ambientes Python para adaptadores Python",
+      "nl": "Beheert Python-omgevingen voor Python-adapters",
+      "fr": "Gère les environnements Python pour les adaptateurs Python",
+      "it": "Gestisce gli ambienti Python per gli adattatori Python",
+      "es": "Gestiona entornos de Python para adaptadores de Python",
+      "pl": "Zarządza środowiskami Pythona dla adapterów Pythona",
+      "zh-cn": "管理Python适配器的Python环境"
     },
     "authors": [
       "bluefox <dogafox@gmail.com>"
     ],
-    "license": "MIT",
     "platform": "Javascript/Node.js",
     "mode": "daemon",
     "enabled": false,
@@ -24,6 +38,7 @@
     "adminUI": {
       "config": "json"
     },
+    "tier": 1,
     "keywords": [
       "python",
       "venv",
@@ -41,12 +56,17 @@
     "news": {
       "0.0.1": {
         "en": "Initial skeleton",
-        "de": "Erstes Geruest"
+        "de": "Erstes Gerüst"
       }
     },
     "supportedMessages": {
       "custom": true
-    }
+    },
+    "licenseInformation": {
+      "license": "MIT",
+      "type": "free"
+    },
+    "extIcon": "https://raw.githubusercontent.com/ioBroker/ioBroker.py-controller/main/admin/py-controller.svg"
   },
   "native": {
     "autoBuildEnvironments": true,
