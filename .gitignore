@@ -3,3 +3,4 @@ build/
 *.log
 .venv/
 package-lock.json
+.idea/

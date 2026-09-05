@@ -38,7 +38,7 @@ off entirely in the settings.
 
 ## Working on a Python adapter
 
-A copied install serves the copy: editing an adapter's Python sources changes nothing until the
+A copied installation serves the copy: editing an adapter's Python sources changes nothing until the
 package is reinstalled, which turns every edit into edit → reinstall → restart.
 
 This adapter therefore installs *linked to the sources* when the adapter's directory is a symlink or
@@ -46,7 +46,7 @@ a junction — which is exactly how a working copy is put into an installation, 
 creates on Windows. Node reports junctions as symbolic links, so the same detection covers both
 platforms. Edits then take effect on the next restart.
 
-It is deliberately not the default for a normal installation: an editable install ties the
+It is deliberately not the default for a normal installation: an editable installation ties the
 environment to a directory that may be deleted, and reinstalling is what makes a version
 reproducible. The setting overrides the detection in either direction.
 
