@@ -50,6 +50,14 @@ export interface CheckInput {
     /** Whether the adapter is allowed to fetch uv by itself */
     mayDownloadUv: boolean;
     adapters: CheckedAdapter[];
+    /**
+     * Newest `iobroker` SDK on PyPI, when it could be looked up.
+     *
+     * Passed in rather than fetched here for the same reason as everything else in this input: the
+     * check stays a pure function of what the caller observed, so the tests can state any
+     * situation without a network.
+     */
+    latestSdkVersion?: string | null;
     /** Injected so the check can be exercised without touching the network */
     reachable?: (url: string) => Promise<boolean>;
 }
@@ -145,7 +153,56 @@ function checkUv(input: CheckInput): Finding {
     };
 }
 
-function checkAdapters(adapters: CheckedAdapter[]): Finding[] {
+/**
+ * The numeric release segment of a version, e.g. `0.6.0rc1` -> `[0, 6, 0]`
+ *
+ * @param version a PEP 440 version string
+ * @returns the leading dotted numbers, or null when the string does not start with one
+ */
+function releaseParts(version: string): number[] | null {
+    const match = /^\s*v?(\d+(?:\.\d+)*)/.exec(version);
+
+    return match ? match[1].split('.').map(Number) : null;
+}
+
+/**
+ * Is the installed version older than what is published?
+ *
+ * Only the numeric release segment is compared, so `0.6.0rc1` and `0.6.0` count as the same. That
+ * errs towards saying nothing, which is the right way round: a wrong "an update is available" is
+ * worse than a missing one, because acting on it rebuilds environments and restarts adapters.
+ *
+ * @param installed version found in the environment
+ * @param latest version published on PyPI
+ * @returns true only when the comparison is unambiguous and installed is behind
+ */
+function isBehind(installed: string, latest: string): boolean {
+    const from = releaseParts(installed);
+    const to = releaseParts(latest);
+
+    if (!from || !to) {
+        return false;
+    }
+
+    for (let i = 0; i < Math.max(from.length, to.length); i++) {
+        const a = from[i] ?? 0;
+        const b = to[i] ?? 0;
+
+        if (a !== b) {
+            return a < b;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * One finding per installed Python adapter.
+ *
+ * @param adapters what was found on this host
+ * @param latestSdk newest SDK on PyPI, or null/undefined when it could not be looked up
+ */
+function checkAdapters(adapters: CheckedAdapter[], latestSdk?: string | null): Finding[] {
     if (!adapters.length) {
         return [
             {
@@ -162,9 +219,20 @@ function checkAdapters(adapters: CheckedAdapter[]): Finding[] {
         // crashes on startup against a method that does not exist -- and it cannot be read off the
         // adapter version, because the environment may predate the adapter's current requirement.
         const sdk = adapter.sdkVersion ? `, SDK ${adapter.sdkVersion}` : '';
+        // An environment is only ever rebuilt because the *adapter* changed -- a new SDK release
+        // triggers nothing. So a working installation drifts further behind the longer it works,
+        // and the report is the only place that can say so.
+        const behind = Boolean(adapter.sdkVersion && latestSdk && isBehind(adapter.sdkVersion, latestSdk));
 
         if (adapter.ready) {
-            return { subject: 'Adapter', severity: 'ok' as Severity, detail: `${where}: environment ready${sdk}` };
+            return behind
+                ? {
+                      subject: 'Adapter',
+                      severity: 'warning' as Severity,
+                      detail: `${where}: environment ready${sdk} -- SDK ${latestSdk} is available`,
+                      hint: 'Nothing is broken; the adapter declares which SDK it needs and has it. Use "Rebuild environments" to pick the newer one up.',
+                  }
+                : { subject: 'Adapter', severity: 'ok' as Severity, detail: `${where}: environment ready${sdk}` };
         }
         if (adapter.stale) {
             return {
@@ -266,7 +334,7 @@ export async function runCheck(input: CheckInput): Promise<CheckOutcome> {
         });
     }
 
-    findings.push(...checkAdapters(input.adapters));
+    findings.push(...checkAdapters(input.adapters, input.latestSdkVersion));
 
     const ok = !findings.some((finding) => finding.severity === 'error');
 

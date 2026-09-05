@@ -19,6 +19,23 @@
       "sm": 12,
       "md": 6
     },
+    "_rebuild": {
+      "type": "sendTo",
+      "command": "rebuildAll",
+      "label": "Rebuild environments",
+      "title": "Rebuilds every Python environment from scratch, picking up the newest Python SDK. Each adapter is stopped while its environment is replaced and started again afterwards.",
+      "variant": "outlined",
+      "confirm": {
+        "title": "Rebuild every Python environment?",
+        "text": "Every Python adapter will be stopped, its environment rebuilt and the adapter started again. This takes a few seconds per adapter and needs internet access.",
+        "ok": "Rebuild",
+        "cancel": "Cancel"
+      },
+      "showProcess": true,
+      "timeout": 300000,
+      "sm": 12,
+      "md": 6
+    },
     "autoBuildEnvironments": {
       "type": "checkbox",
       "label": "Build missing environments automatically",

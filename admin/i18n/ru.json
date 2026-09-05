@@ -12,5 +12,11 @@
     "An editable install lets edits to an adapter's Python sources take effect on the next restart, instead of only after reinstalling. 'Automatic' turns it on for adapters whose directory is a symlink or junction, which is how a working copy is linked into an installation.": "Редактируемая установка позволяет изменениям в исходниках Python адаптера вступать в силу уже при следующем перезапуске, а не только после переустановки. «Автоматически» включает это для адаптеров, каталог которых является симлинком или junction -- именно так рабочая копия подключается к установке.",
     "Automatic (working copies only)": "Автоматически (только рабочие копии)",
     "Always": "Всегда",
-    "Never": "Никогда"
+    "Never": "Никогда",
+    "Rebuild environments": "Пересобрать окружения",
+    "Rebuilds every Python environment from scratch, picking up the newest Python SDK. Each adapter is stopped while its environment is replaced and started again afterwards.": "Полностью пересобирает каждое окружение Python, устанавливая новейший Python SDK. На время замены окружения каждый адаптер останавливается и затем запускается снова.",
+    "Rebuild every Python environment?": "Пересобрать все окружения Python?",
+    "Every Python adapter will be stopped, its environment rebuilt and the adapter started again. This takes a few seconds per adapter and needs internet access.": "Каждый адаптер Python будет остановлен, его окружение пересобрано, после чего адаптер снова запустится. Это занимает несколько секунд на адаптер и требует доступа в интернет.",
+    "Rebuild": "Пересобрать",
+    "Cancel": "Отмена"
 }

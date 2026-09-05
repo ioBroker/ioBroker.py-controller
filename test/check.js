@@ -126,6 +126,77 @@ describe('readiness check', () => {
         assert.match(findingFor(outcome, 'Adapter').detail, /SDK 0\.5\.0/);
     });
 
+    it('warns when a ready environment holds an SDK older than what is published', async () => {
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: '0.4.0' })],
+            latestSdkVersion: '0.6.0',
+        });
+
+        const finding = findingFor(outcome, 'Adapter');
+
+        assert.equal(finding.severity, 'warning');
+        assert.match(finding.detail, /SDK 0\.6\.0 is available/);
+        assert.ok(finding.hint, 'a warning has to say what to do about it');
+        // Being behind is not a failure -- the adapter has the SDK it declared it needs.
+        assert.equal(outcome.ok, true);
+    });
+
+    it('stays quiet when the environment already holds the newest SDK', async () => {
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: '0.6.0' })],
+            latestSdkVersion: '0.6.0',
+        });
+
+        assert.equal(findingFor(outcome, 'Adapter').severity, 'ok');
+        assert.doesNotMatch(findingFor(outcome, 'Adapter').detail, /available/);
+    });
+
+    it('does not offer an update to an older version', async () => {
+        // A developer running an unreleased SDK must not be told to downgrade.
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: '0.7.0' })],
+            latestSdkVersion: '0.6.0',
+        });
+
+        assert.equal(findingFor(outcome, 'Adapter').severity, 'ok');
+    });
+
+    it('compares release numbers, not strings', async () => {
+        // '0.10.0' sorts before '0.9.0' as text; as a version it is newer.
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: '0.9.0' })],
+            latestSdkVersion: '0.10.0',
+        });
+
+        assert.equal(findingFor(outcome, 'Adapter').severity, 'warning');
+    });
+
+    it('treats a pre-release of the newest version as current', async () => {
+        // Erring towards silence: acting on the hint rebuilds environments and restarts adapters,
+        // so a wrong "an update is available" costs more than a missing one.
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: '0.6.0rc1' })],
+            latestSdkVersion: '0.6.0',
+        });
+
+        assert.equal(findingFor(outcome, 'Adapter').severity, 'ok');
+    });
+
+    it('says nothing about updates when PyPI could not be asked', async () => {
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: '0.4.0' })],
+            latestSdkVersion: null,
+        });
+
+        assert.equal(findingFor(outcome, 'Adapter').severity, 'ok');
+    });
+
     it('fails when uv is absent and may not be downloaded', async () => {
         const outcome = await runCheck({
             ...base,

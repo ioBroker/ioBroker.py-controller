@@ -102,6 +102,37 @@ function isExecutableImage(file: string): boolean {
 /** Name of the Python SDK package every Python adapter talks to the databases through. */
 const SDK_PACKAGE = 'iobroker';
 
+/** PyPI's metadata endpoint for the SDK; `info.version` is the newest non-yanked release. */
+const SDK_PYPI_JSON = `https://pypi.org/pypi/${SDK_PACKAGE}/json`;
+
+/**
+ * Look up the newest published SDK release.
+ *
+ * Failure is not an error: an installation may be deliberately offline, and the check must still
+ * produce a report. A null answer simply means the report says nothing about updates.
+ *
+ * @returns the version, or null when it could not be determined
+ */
+async function latestSdkOnPypi(): Promise<string | null> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 4000);
+
+    try {
+        const response = await fetch(SDK_PYPI_JSON, { signal: abort.signal });
+
+        if (!response.ok) {
+            return null;
+        }
+        const body = (await response.json()) as { info?: { version?: string } };
+
+        return body.info?.version ?? null;
+    } catch {
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 /**
  * Read the `iobroker` SDK version out of a built environment.
  *
@@ -736,6 +767,16 @@ class PyController extends utils.Adapter {
                 }
                 break;
             }
+            case 'rebuildAll': {
+                this.reply(obj, {
+                    copyDialog: {
+                        title: 'Rebuilt environments',
+                        type: 'yaml',
+                        text: await this.rebuildAll(),
+                    },
+                });
+                break;
+            }
             case 'check': {
                 this.reply(obj, {
                     copyDialog: {
@@ -749,6 +790,45 @@ class PyController extends utils.Adapter {
             default:
                 this.log.warn(`Unknown command: ${obj.command}`);
         }
+    }
+
+    /**
+     * Rebuild every Python adapter's environment, whether or not it looks current.
+     *
+     * The one thing an automatic rebuild never does. Environments are replaced only when the
+     * adapter itself changes, so a new SDK release reaches nothing on its own -- deliberately,
+     * because an installation should not change because a release happened somewhere in the night.
+     * This is the other half of that decision: a way to ask for it, at a moment the user chose.
+     *
+     * Forced, not "only what is stale": an environment that looks current is exactly the one
+     * holding an old SDK, and skipping it would make the button do nothing in the case it exists
+     * for.
+     *
+     * @returns a YAML report naming what each environment ended up with
+     */
+    private async rebuildAll(): Promise<string> {
+        const adapters = await this.discoverPythonAdapters();
+        const lines = [`# ${new Date().toISOString()}`, 'rebuilt:'];
+        const scalar = (text: string): string => `'${text.replace(/'/g, "''")}'`;
+
+        if (!adapters.length) {
+            return [...lines, "  - 'no Python adapters installed'"].join('\n');
+        }
+
+        for (const adapter of adapters) {
+            try {
+                await this.buildEnvironment(adapter);
+                // Re-read rather than trust the pre-build value: the whole point is which SDK the
+                // environment ended up with, and that is only known afterwards.
+                const sdk = await readSdkVersion(adapter.venvDir);
+
+                lines.push(`  - ${scalar(`OK   | ${adapter.name} ${adapter.version}${sdk ? `, SDK ${sdk}` : ''}`)}`);
+            } catch (e) {
+                lines.push(`  - ${scalar(`FAIL | ${adapter.name}: ${(e as Error).message}`)}`);
+            }
+        }
+
+        return lines.join('\n');
     }
 
     /**
@@ -771,12 +851,18 @@ class PyController extends utils.Adapter {
             }
         }
 
+        const adapters = await this.discoverPythonAdapters();
+        // Only worth asking when there is something to compare against. An installation with no
+        // built environment learns nothing from the answer and should not pay for the request.
+        const latestSdkVersion = adapters.some((adapter) => adapter.sdkVersion) ? await latestSdkOnPypi() : null;
+
         const outcome = await runCheck({
             envRoot: this.envRoot,
             uvPath,
             uvVersion,
             mayDownloadUv: (this.config as { downloadUv?: boolean }).downloadUv !== false,
-            adapters: await this.discoverPythonAdapters(),
+            adapters,
+            latestSdkVersion,
         });
 
         this.log[outcome.ok ? 'info' : 'warn'](`Prerequisite check: ${outcome.ok ? 'ok' : 'problems found'}`);
