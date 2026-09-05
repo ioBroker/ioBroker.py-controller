@@ -1,0 +1,22 @@
+{
+  "Always": "Altijd",
+  "An editable install lets edits to an adapter's Python sources take effect on the next restart, instead of only after reinstalling. 'Automatic' turns it on for adapters whose directory is a symlink or junction, which is how a working copy is linked into an installation.": "Een bewerkbare installatie zorgt ervoor dat wijzigingen in de Python-broncode van een adapter van kracht worden bij de volgende herstart, in plaats van pas na een herinstallatie. 'Automatisch' schakelt deze functie in voor adapters waarvan de directory een symbolische link of junction is, wat de manier is waarop een werkexemplaar aan een installatie wordt gekoppeld.",
+  "Automatic (working copies only)": "Automatisch (alleen werkexemplaren)",
+  "Build missing environments automatically": "Ontbrekende omgevingen automatisch opbouwen",
+  "Cancel": "Annuleren",
+  "Check prerequisites": "Controleer de vereisten",
+  "Creates a venv as soon as a Python adapter is installed whose environment is missing.": "Maakt een virtuele omgeving aan zodra een Python-adapter is geïnstalleerd waarvan de omgeving ontbreekt.",
+  "Download uv automatically": "UV-bestanden automatisch downloaden",
+  "Every Python adapter will be stopped, its environment rebuilt and the adapter started again. This takes a few seconds per adapter and needs internet access.": "Elke Python-adapter wordt gestopt, de omgeving wordt opnieuw opgebouwd en de adapter wordt vervolgens opnieuw gestart. Dit duurt een paar seconden per adapter en vereist een internetverbinding.",
+  "Install linked to sources": "Installeer gekoppelde bronnen",
+  "Leave empty to search PATH. uv ships its own interpreters, which avoids depending on an outdated system Python.": "Laat dit veld leeg om in het pad te zoeken. uv levert zijn eigen interpreters mee, waardoor afhankelijkheid van een verouderde Python-versie van het systeem wordt vermeden.",
+  "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter. Changes nothing.": "Zoekt naar uv, een beschrijfbare omgevingsmap, internettoegang en de status van alle geïnstalleerde Python-adapters. Wijzigt niets.",
+  "Never": "Nooit",
+  "Path to uv": "Pad naar uv",
+  "Rebuild": "Wederopbouw",
+  "Rebuild environments": "Omgevingen opnieuw opbouwen",
+  "Rebuild every Python environment?": "Alle Python-omgevingen opnieuw opbouwen?",
+  "Rebuilds every Python environment from scratch, picking up the newest Python SDK. Each adapter is stopped while its environment is replaced and started again afterwards.": "Herbouwt elke Python-omgeving volledig, waarbij de nieuwste Python SDK wordt gebruikt. Elke adapter wordt gestopt terwijl de bijbehorende omgeving wordt vervangen en daarna weer gestart.",
+  "This adapter manages Python environments. Processes are started by js-controller.": "Deze adapter beheert Python-omgevingen. Processen worden gestart door js-controller.",
+  "uv creates the virtual environments and brings its own Python interpreters. If it is not installed, this adapter fetches a pinned version into iobroker-data/py/.bin/.": "uv creëert de virtuele omgevingen en brengt zijn eigen Python-interpreters mee. Als deze niet is geïnstalleerd, haalt deze adapter een vastgezette versie op uit iobroker-data/py/.bin/."
+}

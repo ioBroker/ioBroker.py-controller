@@ -1,0 +1,22 @@
+{
+  "Always": "Siempre",
+  "An editable install lets edits to an adapter's Python sources take effect on the next restart, instead of only after reinstalling. 'Automatic' turns it on for adapters whose directory is a symlink or junction, which is how a working copy is linked into an installation.": "Una instalación editable permite que las modificaciones realizadas a los archivos fuente de Python de un adaptador surtan efecto al reiniciar el sistema, en lugar de solo después de reinstalarlo. La opción \"Automático\" lo habilita para los adaptadores cuyo directorio es un enlace simbólico o una unión, que es como se vincula una copia de trabajo a una instalación.",
+  "Automatic (working copies only)": "Automático (solo copias funcionales)",
+  "Build missing environments automatically": "Construye automáticamente los entornos que falten.",
+  "Cancel": "Cancelar",
+  "Check prerequisites": "Comprobar requisitos previos",
+  "Creates a venv as soon as a Python adapter is installed whose environment is missing.": "Crea un entorno virtual (venv) tan pronto como se instala un adaptador de Python cuyo entorno no está presente.",
+  "Download uv automatically": "Descarga UV automáticamente",
+  "Every Python adapter will be stopped, its environment rebuilt and the adapter started again. This takes a few seconds per adapter and needs internet access.": "Se detendrá cada adaptador de Python, se reconstruirá su entorno y se reiniciará. Este proceso tarda unos segundos por adaptador y requiere conexión a internet.",
+  "Install linked to sources": "Instalar vinculado a las fuentes",
+  "Leave empty to search PATH. uv ships its own interpreters, which avoids depending on an outdated system Python.": "Déjelo vacío para buscar en PATH. uv incluye sus propios intérpretes, lo que evita depender de un sistema Python obsoleto.",
+  "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter. Changes nothing.": "Busca uv, un directorio de entorno con permisos de escritura, acceso a internet y el estado de todos los adaptadores de Python instalados. No modifica nada.",
+  "Never": "Nunca",
+  "Path to uv": "Ruta a uv",
+  "Rebuild": "Reconstruir",
+  "Rebuild environments": "Reconstruir entornos",
+  "Rebuild every Python environment?": "¿Reconstruir todos los entornos de Python?",
+  "Rebuilds every Python environment from scratch, picking up the newest Python SDK. Each adapter is stopped while its environment is replaced and started again afterwards.": "Reconstruye cada entorno de Python desde cero, utilizando el SDK de Python más reciente. Cada adaptador se detiene mientras se reemplaza su entorno y se reinicia posteriormente.",
+  "This adapter manages Python environments. Processes are started by js-controller.": "Este adaptador gestiona entornos Python. Los procesos son iniciados por js-controller.",
+  "uv creates the virtual environments and brings its own Python interpreters. If it is not installed, this adapter fetches a pinned version into iobroker-data/py/.bin/.": "uv crea los entornos virtuales y proporciona sus propios intérpretes de Python. Si no está instalado, este adaptador descarga una versión fija en iobroker-data/py/.bin/."
+}

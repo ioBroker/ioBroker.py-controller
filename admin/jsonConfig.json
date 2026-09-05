@@ -7,6 +7,28 @@
       "text": "This adapter manages Python environments. Processes are started by js-controller.",
       "sm": 12
     },
+    "_installing": {
+      "type": "state",
+      "oid": "info.installing",
+      "control": "text",
+      "addColon": true,
+      "label": "Building an environment",
+      "trueText": "yes -- the adapter it belongs to is stopped until it finishes",
+      "trueTextStyle": { "color": "#ffa500", "fontWeight": "bold" },
+      "falseText": "no",
+      "newLine": true,
+      "sm": 12,
+      "md": 6
+    },
+    "_installStatus": {
+      "type": "state",
+      "oid": "info.installStatus",
+      "control": "text",
+      "addColon": true,
+      "label": "Step",
+      "sm": 12,
+      "md": 6
+    },
     "_check": {
       "type": "sendTo",
       "command": "check",

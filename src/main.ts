@@ -31,6 +31,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { runCheck } from './check.js';
+import { readPackages } from './packages.js';
 import { downloadUv, managedUvPath } from './uv.js';
 
 const run = promisify(execFile);
@@ -70,6 +71,8 @@ interface EnvironmentStamp {
     editable?: boolean;
     /** Hash over pyproject.toml, so edits without a version bump are noticed too */
     dependencyHash?: string;
+    /** Extra packages that were installed on top, sorted; absent on environments built before this */
+    userPackages?: string[];
     /** When the environment was built, ISO 8601 */
     builtAt?: string;
     /** Version of the interpreter in the environment */
@@ -200,6 +203,13 @@ interface PythonAdapterInfo {
     stale: boolean;
     /** Version of the `iobroker` SDK installed in the venv; null when there is none to read */
     sdkVersion: string | null;
+    /**
+     * Extra packages the user asked for, from `native.userPackages`.
+     *
+     * The union over every instance of this adapter, because the environment is per adapter: two
+     * instances share one venv, so they share what is installed in it.
+     */
+    userPackages: string[];
     /** What the environment was built for; null when there is no stamp */
     stamp: EnvironmentStamp | null;
     /** Install the package linked to its sources rather than copied */
@@ -227,6 +237,8 @@ class PyController extends utils.Adapter {
     private async onReady(): Promise<void> {
         this.envRoot = path.join(utils.getAbsoluteInstanceDataDir(this), '..', 'py');
         await fs.mkdir(this.envRoot, { recursive: true });
+
+        await this.ensureProgressObjects();
 
         this.uvPath = await this.findUv();
         if (this.uvPath) {
@@ -373,6 +385,7 @@ class PyController extends utils.Adapter {
         const stamp = await this.readStamp(envDir);
         const dependencyHash = await this.hashDependencies(pythonDir);
         const editable = await this.wantsEditable(dir);
+        const userPackages = await this.readUserPackages(name);
 
         let exists = false;
         try {
@@ -396,7 +409,12 @@ class PyController extends utils.Adapter {
                 Boolean(stamp.editable) !== editable ||
                 (stamp.dependencyHash !== undefined &&
                     dependencyHash !== undefined &&
-                    stamp.dependencyHash !== dependencyHash));
+                    stamp.dependencyHash !== dependencyHash) ||
+                // What the user asked for is part of what the environment is: adding a package has
+                // to reach the venv, and removing one has to leave it, or the list in the settings
+                // stops describing what a script can import. Both lists are sorted, so this
+                // compares content and not the order somebody typed them in.
+                (stamp.userPackages ?? []).join('\n') !== userPackages.join('\n'));
 
         return {
             name,
@@ -411,7 +429,44 @@ class PyController extends utils.Adapter {
             stamp,
             editable,
             sdkVersion: exists ? await readSdkVersion(venvDir) : null,
+            userPackages,
         };
+    }
+
+    /**
+     * The extra packages every instance of an adapter has asked for, together.
+     *
+     * One venv serves all instances of an adapter, so the answer has to be the union: two instances
+     * with different lists both get everything, because they both import from the same environment.
+     * Anything that is not a package specification is dropped and named -- a config field goes
+     * straight to a package installer, and quietly passing an unrecognised entry along would let a
+     * typo become an installer option.
+     *
+     * @param adapterName name of the adapter without the `iobroker.` prefix
+     * @returns the accepted specifications, sorted and de-duplicated
+     */
+    private async readUserPackages(adapterName: string): Promise<string[]> {
+        const view = await this.getObjectViewAsync('system', 'instance', {
+            startkey: `${SYSTEM_ADAPTER_PREFIX}${adapterName}.`,
+            endkey: `${SYSTEM_ADAPTER_PREFIX}${adapterName}.香`,
+        });
+        const all = new Set<string>();
+
+        for (const row of view?.rows ?? []) {
+            const native = row.value?.native as { userPackages?: unknown } | undefined;
+            const { packages, refused } = readPackages(native?.userPackages);
+
+            packages.forEach((spec) => all.add(spec));
+
+            if (refused.length) {
+                this.log.warn(
+                    `${row.value?._id}: ignoring ${refused.map((spec) => `"${spec}"`).join(', ')} -- ` +
+                        `a package is a name with optional extras and version, like "httpx[http2]>=0.27"`,
+                );
+            }
+        }
+
+        return [...all].sort();
     }
 
     /**
@@ -513,6 +568,7 @@ class PyController extends utils.Adapter {
             adapterVersion: info.version,
             editable: info.editable,
             dependencyHash: await this.hashDependencies(info.pythonDir),
+            userPackages: info.userPackages,
             builtAt: new Date().toISOString(),
             pythonVersion,
         };
@@ -613,6 +669,7 @@ class PyController extends utils.Adapter {
         const stopped = await this.stopInstancesOf(info.name);
 
         try {
+            await this.progress(`Creating the environment for ${info.name} ${info.version}`);
             this.log.info(
                 `Building environment for ${info.name} ${info.version}${info.editable ? ' (editable, linked to its sources)' : ''} ...`,
             );
@@ -631,17 +688,86 @@ class PyController extends utils.Adapter {
 
             install.push('.');
 
+            await this.progress(`Installing ${info.name} and its dependencies`);
             await run(this.uvPath, install, { cwd: info.pythonDir });
+
+            // The user's own packages go in afterwards, in one call: a single resolution sees all
+            // of them together with what the adapter already requires, so a conflict is reported
+            // instead of being silently won by whichever was installed last.
+            if (info.userPackages.length) {
+                await this.progress(`Installing ${info.userPackages.join(', ')} for ${info.name}`);
+                this.log.info(`Installing user packages for ${info.name}: ${info.userPackages.join(', ')}`);
+                await run(this.uvPath, [
+                    'pip',
+                    'install',
+                    '--refresh',
+                    '--python',
+                    info.interpreter,
+                    ...info.userPackages,
+                ]);
+            }
+
             // Only after the install succeeded -- a stamp written earlier would mark a half-built
             // environment as current.
             await this.writeStamp(info);
             this.log.info(`Environment for ${info.name} ${info.version} is ready`);
         } finally {
+            await this.progress(null);
             // Also after a failed build. Leaving an instance disabled would be this adapter
             // silently changing the user's configuration; js-controller declines to start it while
             // the environment is broken anyway, and says so.
             await this.startInstances(stopped);
         }
+    }
+
+    /**
+     * Make sure the two progress states exist before anything writes to them.
+     *
+     * `instanceObjects` in io-package.json only creates them when the adapter is installed or
+     * upgraded, so an installation that was already running when this feature arrived has none --
+     * and writing a state without an object works but is deprecated, and shows nothing useful in
+     * admin. Creating them here costs two lookups per start and covers both cases.
+     */
+    private async ensureProgressObjects(): Promise<void> {
+        await this.setObjectNotExistsAsync('info.installing', {
+            type: 'state',
+            common: {
+                name: 'An environment is being built',
+                type: 'boolean',
+                role: 'indicator.working',
+                read: true,
+                write: false,
+                def: false,
+            },
+            native: {},
+        });
+        await this.setObjectNotExistsAsync('info.installStatus', {
+            type: 'state',
+            common: {
+                name: 'What is being installed',
+                type: 'string',
+                role: 'text',
+                read: true,
+                write: false,
+                def: '',
+            },
+            native: {},
+        });
+    }
+
+    /**
+     * Say what is being installed, for someone watching admin rather than the log.
+     *
+     * Building an environment takes seconds to minutes, and the adapter it belongs to is stopped
+     * for all of it. Without this the only visible sign is an instance that has gone red, which
+     * looks like a fault rather than like work in progress. Two states rather than one: a boolean
+     * is what a visualisation or a script can react to, the text is what a person reads.
+     *
+     * @param what a short description, or null when nothing is running any more
+     */
+    private async progress(what: string | null): Promise<void> {
+        await this.setState('info.installing', { val: what !== null, ack: true });
+        await this.setState('info.installStatus', { val: what ?? '', ack: true });
     }
 
     /**

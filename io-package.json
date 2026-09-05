@@ -96,6 +96,32 @@
         "def": false
       },
       "native": {}
+    },
+    {
+      "_id": "info.installing",
+      "type": "state",
+      "common": {
+        "role": "indicator.working",
+        "name": "An environment is being built",
+        "type": "boolean",
+        "read": true,
+        "write": false,
+        "def": false
+      },
+      "native": {}
+    },
+    {
+      "_id": "info.installStatus",
+      "type": "state",
+      "common": {
+        "role": "text",
+        "name": "What is being installed",
+        "type": "string",
+        "read": true,
+        "write": false,
+        "def": ""
+      },
+      "native": {}
     }
   ]
 }

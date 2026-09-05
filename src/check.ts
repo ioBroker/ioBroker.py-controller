@@ -38,6 +38,8 @@ export interface CheckedAdapter {
     stale: boolean;
     /** Version of the `iobroker` Python SDK in the environment; null when none is installed */
     sdkVersion?: string | null;
+    /** Extra packages the instances asked for in `native.userPackages` */
+    userPackages?: string[];
 }
 
 export interface CheckInput {
@@ -219,6 +221,9 @@ function checkAdapters(adapters: CheckedAdapter[], latestSdk?: string | null): F
         // crashes on startup against a method that does not exist -- and it cannot be read off the
         // adapter version, because the environment may predate the adapter's current requirement.
         const sdk = adapter.sdkVersion ? `, SDK ${adapter.sdkVersion}` : '';
+        // Named, not counted: after adding one to the settings the question is whether that
+        // particular package is in, and a number cannot answer it.
+        const extra = adapter.userPackages?.length ? `, plus ${adapter.userPackages.join(' ')}` : '';
         // An environment is only ever rebuilt because the *adapter* changed -- a new SDK release
         // triggers nothing. So a working installation drifts further behind the longer it works,
         // and the report is the only place that can say so.
@@ -229,16 +234,20 @@ function checkAdapters(adapters: CheckedAdapter[], latestSdk?: string | null): F
                 ? {
                       subject: 'Adapter',
                       severity: 'warning' as Severity,
-                      detail: `${where}: environment ready${sdk} -- SDK ${latestSdk} is available`,
+                      detail: `${where}: environment ready${sdk}${extra} -- SDK ${latestSdk} is available`,
                       hint: 'Nothing is broken; the adapter declares which SDK it needs and has it. Use "Rebuild environments" to pick the newer one up.',
                   }
-                : { subject: 'Adapter', severity: 'ok' as Severity, detail: `${where}: environment ready${sdk}` };
+                : {
+                      subject: 'Adapter',
+                      severity: 'ok' as Severity,
+                      detail: `${where}: environment ready${sdk}${extra}`,
+                  };
         }
         if (adapter.stale) {
             return {
                 subject: 'Adapter',
                 severity: 'warning' as Severity,
-                detail: `${where}: environment was built for a different version${sdk}`,
+                detail: `${where}: environment was built for a different version${sdk}${extra}`,
                 hint: 'It will be rebuilt; js-controller refuses to start the instance until then.',
             };
         }

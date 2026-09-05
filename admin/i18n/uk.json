@@ -1,0 +1,22 @@
+{
+  "Always": "Завжди",
+  "An editable install lets edits to an adapter's Python sources take effect on the next restart, instead of only after reinstalling. 'Automatic' turns it on for adapters whose directory is a symlink or junction, which is how a working copy is linked into an installation.": "Редагування інсталяції дозволяє змінам у вихідних кодах Python адаптера набути чинності після наступного перезапуску, а не лише після перевстановлення. Опція «Автоматично» вмикає цю функцію для адаптерів, каталог яких є символічним посиланням або з’єднанням, тобто таким чином робоча копія пов’язана з інсталяцією.",
+  "Automatic (working copies only)": "Автоматично (лише робочі копії)",
+  "Build missing environments automatically": "Автоматично створювати відсутні середовища",
+  "Cancel": "Скасувати",
+  "Check prerequisites": "Перевірте попередні умови",
+  "Creates a venv as soon as a Python adapter is installed whose environment is missing.": "Створює venv одразу після встановлення адаптера Python, середовище якого відсутнє.",
+  "Download uv automatically": "Автоматичне завантаження UV",
+  "Every Python adapter will be stopped, its environment rebuilt and the adapter started again. This takes a few seconds per adapter and needs internet access.": "Кожен адаптер Python буде зупинено, його середовище перебудовано, а адаптер запущено знову. Це займає кілька секунд для кожного адаптера та потребує доступу до Інтернету.",
+  "Install linked to sources": "Встановлення пов’язане з джерелами",
+  "Leave empty to search PATH. uv ships its own interpreters, which avoids depending on an outdated system Python.": "Залиште поле порожнім для пошуку PATH. uv постачає власні інтерпретатори, що дозволяє уникнути залежності від застарілого системного Python.",
+  "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter. Changes nothing.": "Шукає uv, каталог середовища, доступний для запису, доступ до Інтернету та стан кожного встановленого адаптера Python. Нічого не змінює.",
+  "Never": "Ніколи",
+  "Path to uv": "Шлях до ультрафіолету",
+  "Rebuild": "Відбудувати",
+  "Rebuild environments": "Перебудувати середовища",
+  "Rebuild every Python environment?": "Перебудувати кожне середовище Python?",
+  "Rebuilds every Python environment from scratch, picking up the newest Python SDK. Each adapter is stopped while its environment is replaced and started again afterwards.": "Перебудовує кожне середовище Python з нуля, використовуючи найновіший Python SDK. Кожен адаптер зупиняється, поки його середовище замінюється, і запускається знову після цього.",
+  "This adapter manages Python environments. Processes are started by js-controller.": "Цей адаптер керує середовищами Python. Процеси запускаються js-контролером.",
+  "uv creates the virtual environments and brings its own Python interpreters. If it is not installed, this adapter fetches a pinned version into iobroker-data/py/.bin/.": "uv створює віртуальні середовища та використовує власні інтерпретатори Python. Якщо він не встановлений, цей адаптер отримує закріплену версію в iobroker-data/py/.bin/."
+}

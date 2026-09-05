@@ -84,7 +84,11 @@ async function isMusl(): Promise<boolean> {
     }
 }
 
-/** Path the managed uv binary ends up at */
+/**
+ * Path the managed uv binary ends up at
+ *
+ * @param envRoot root of all managed environments, i.e. `<iobroker-data>/py`
+ */
 export function managedUvPath(envRoot: string): string {
     return path.join(envRoot, UV_DIR, process.platform === 'win32' ? 'uv.exe' : 'uv');
 }
