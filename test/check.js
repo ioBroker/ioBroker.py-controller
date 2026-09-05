@@ -97,6 +97,35 @@ describe('readiness check', () => {
         assert.match(findingFor(outcome, 'Adapter').detail, /different version/);
     });
 
+    it('names the Python SDK version in the environment', async () => {
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: '0.6.0' })],
+        });
+
+        assert.match(findingFor(outcome, 'Adapter').detail, /SDK 0\.6\.0/);
+    });
+
+    it('says nothing about the SDK when its version could not be read', async () => {
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ sdkVersion: null })],
+        });
+
+        assert.doesNotMatch(findingFor(outcome, 'Adapter').detail, /SDK/);
+    });
+
+    it('names the SDK version of a stale environment too', async () => {
+        // Exactly the case the line exists for: the environment holds an SDK older than the
+        // adapter now needs, and the report has to show that before the rebuild replaces it.
+        const outcome = await runCheck({
+            ...base,
+            adapters: [adapter({ ready: false, stale: true, sdkVersion: '0.5.0' })],
+        });
+
+        assert.match(findingFor(outcome, 'Adapter').detail, /SDK 0\.5\.0/);
+    });
+
     it('fails when uv is absent and may not be downloaded', async () => {
         const outcome = await runCheck({
             ...base,

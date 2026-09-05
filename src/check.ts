@@ -36,6 +36,8 @@ export interface CheckedAdapter {
     interpreter: string;
     ready: boolean;
     stale: boolean;
+    /** Version of the `iobroker` Python SDK in the environment; null when none is installed */
+    sdkVersion?: string | null;
 }
 
 export interface CheckInput {
@@ -156,15 +158,19 @@ function checkAdapters(adapters: CheckedAdapter[]): Finding[] {
 
     return adapters.map((adapter) => {
         const where = `${adapter.name} ${adapter.version}`;
+        // Which SDK an environment actually holds is the first thing worth knowing when an adapter
+        // crashes on startup against a method that does not exist -- and it cannot be read off the
+        // adapter version, because the environment may predate the adapter's current requirement.
+        const sdk = adapter.sdkVersion ? `, SDK ${adapter.sdkVersion}` : '';
 
         if (adapter.ready) {
-            return { subject: 'Adapter', severity: 'ok' as Severity, detail: `${where}: environment ready` };
+            return { subject: 'Adapter', severity: 'ok' as Severity, detail: `${where}: environment ready${sdk}` };
         }
         if (adapter.stale) {
             return {
                 subject: 'Adapter',
                 severity: 'warning' as Severity,
-                detail: `${where}: environment was built for a different version`,
+                detail: `${where}: environment was built for a different version${sdk}`,
                 hint: 'It will be rebuilt; js-controller refuses to start the instance until then.',
             };
         }

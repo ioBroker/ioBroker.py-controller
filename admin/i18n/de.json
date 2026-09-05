@@ -1,0 +1,16 @@
+{
+    "This adapter manages Python environments. Processes are started by js-controller.": "Dieser Adapter verwaltet Python-Umgebungen. Die Prozesse werden vom js-controller gestartet.",
+    "Check prerequisites": "Voraussetzungen prüfen",
+    "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter. Changes nothing.": "Sucht nach uv, einem beschreibbaren Umgebungsverzeichnis, Internetzugang und dem Zustand jedes installierten Python-Adapters. Ändert nichts.",
+    "Build missing environments automatically": "Fehlende Umgebungen automatisch anlegen",
+    "Creates a venv as soon as a Python adapter is installed whose environment is missing.": "Legt ein venv an, sobald ein Python-Adapter installiert wird, dessen Umgebung fehlt.",
+    "Download uv automatically": "uv automatisch herunterladen",
+    "uv creates the virtual environments and brings its own Python interpreters. If it is not installed, this adapter fetches a pinned version into iobroker-data/py/.bin/.": "uv legt die virtuellen Umgebungen an und bringt eigene Python-Interpreter mit. Ist es nicht installiert, lädt dieser Adapter eine festgelegte Version nach iobroker-data/py/.bin/.",
+    "Path to uv": "Pfad zu uv",
+    "Leave empty to search PATH. uv ships its own interpreters, which avoids depending on an outdated system Python.": "Leer lassen, um PATH zu durchsuchen. uv bringt eigene Interpreter mit und macht damit unabhängig von einem veralteten System-Python.",
+    "Install linked to sources": "Verknüpft mit den Quellen installieren",
+    "An editable install lets edits to an adapter's Python sources take effect on the next restart, instead of only after reinstalling. 'Automatic' turns it on for adapters whose directory is a symlink or junction, which is how a working copy is linked into an installation.": "Eine editierbare Installation lässt Änderungen an den Python-Quellen eines Adapters schon beim nächsten Neustart wirken, statt erst nach einer Neuinstallation. \"Automatisch\" schaltet das für Adapter ein, deren Verzeichnis ein Symlink oder eine Junction ist -- so wird eine Arbeitskopie in eine Installation eingebunden.",
+    "Automatic (working copies only)": "Automatisch (nur Arbeitskopien)",
+    "Always": "Immer",
+    "Never": "Nie"
+}

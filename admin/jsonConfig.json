@@ -8,7 +8,7 @@
       "sm": 12
     },
     "_check": {
-      "type": "sendto",
+      "type": "sendTo",
       "command": "check",
       "label": "Check prerequisites",
       "title": "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter. Changes nothing.",

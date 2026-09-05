@@ -1,0 +1,16 @@
+{
+    "This adapter manages Python environments. Processes are started by js-controller.": "Этот адаптер управляет окружениями Python. Процессы запускает js-controller.",
+    "Check prerequisites": "Проверить предварительные условия",
+    "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter. Changes nothing.": "Проверяет наличие uv, доступного для записи каталога окружений, доступа в интернет и состояние каждого установленного адаптера Python. Ничего не изменяет.",
+    "Build missing environments automatically": "Автоматически создавать отсутствующие окружения",
+    "Creates a venv as soon as a Python adapter is installed whose environment is missing.": "Создаёт venv, как только устанавливается адаптер Python, окружение которого отсутствует.",
+    "Download uv automatically": "Автоматически загружать uv",
+    "uv creates the virtual environments and brings its own Python interpreters. If it is not installed, this adapter fetches a pinned version into iobroker-data/py/.bin/.": "uv создаёт виртуальные окружения и содержит собственные интерпретаторы Python. Если он не установлен, адаптер загрузит закреплённую версию в iobroker-data/py/.bin/.",
+    "Path to uv": "Путь к uv",
+    "Leave empty to search PATH. uv ships its own interpreters, which avoids depending on an outdated system Python.": "Оставьте пустым для поиска в PATH. uv поставляется с собственными интерпретаторами, что избавляет от зависимости от устаревшего системного Python.",
+    "Install linked to sources": "Устанавливать со ссылкой на исходники",
+    "An editable install lets edits to an adapter's Python sources take effect on the next restart, instead of only after reinstalling. 'Automatic' turns it on for adapters whose directory is a symlink or junction, which is how a working copy is linked into an installation.": "Редактируемая установка позволяет изменениям в исходниках Python адаптера вступать в силу уже при следующем перезапуске, а не только после переустановки. «Автоматически» включает это для адаптеров, каталог которых является симлинком или junction -- именно так рабочая копия подключается к установке.",
+    "Automatic (working copies only)": "Автоматически (только рабочие копии)",
+    "Always": "Всегда",
+    "Never": "Никогда"
+}

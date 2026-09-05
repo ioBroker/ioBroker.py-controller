@@ -57,6 +57,12 @@ const SYSTEM_ADAPTER_PREFIX = 'system.adapter.';
  */
 const STAMP_FILE = 'environment.json';
 
+/** How long to wait for an instance to actually be gone before rebuilding its environment. */
+const STOP_TIMEOUT_MS = 15_000;
+
+/** How often to look while waiting for that. */
+const STOP_POLL_MS = 250;
+
 interface EnvironmentStamp {
     /** `common.version` of the adapter the environment was built for */
     adapterVersion: string;
@@ -68,6 +74,78 @@ interface EnvironmentStamp {
     builtAt?: string;
     /** Version of the interpreter in the environment */
     pythonVersion?: string;
+}
+
+/**
+ * Extensions Windows can actually launch as a process.
+ *
+ * Deliberately not all of PATHEXT: `.JS`, `.VBS` and friends are run by the Windows Script Host,
+ * which `spawn` does not do -- it needs a real executable image and fails with `EFTYPE` otherwise.
+ */
+const WINDOWS_EXECUTABLE_EXTENSIONS = ['.exe', '.com', '.bat', '.cmd'];
+
+/**
+ * Can this file be spawned as a process?
+ *
+ * @param file path to check; on POSIX every path passes, because `which` only ever reports files
+ * that carry the execute bit
+ * @returns true when spawning the file has a chance of working
+ */
+function isExecutableImage(file: string): boolean {
+    if (process.platform !== 'win32') {
+        return true;
+    }
+
+    return WINDOWS_EXECUTABLE_EXTENSIONS.includes(path.extname(file).toLowerCase());
+}
+
+/** Name of the Python SDK package every Python adapter talks to the databases through. */
+const SDK_PACKAGE = 'iobroker';
+
+/**
+ * Read the `iobroker` SDK version out of a built environment.
+ *
+ * By reading the `.dist-info` directory name rather than running the interpreter: the check must
+ * stay read-only and fast, and a venv whose interpreter refuses to start is exactly the situation
+ * where knowing the installed version matters most.
+ *
+ * @param venvDir the environment to look in
+ * @returns the version, or null when the package is not installed or the layout is unexpected
+ */
+async function readSdkVersion(venvDir: string): Promise<string | null> {
+    // Windows puts packages in Lib/site-packages, POSIX in lib/python3.x/site-packages -- the
+    // minor version is not known here, so the directory is discovered rather than assembled.
+    const roots =
+        process.platform === 'win32'
+            ? [path.join(venvDir, 'Lib', 'site-packages')]
+            : await (async () => {
+                  const lib = path.join(venvDir, 'lib');
+
+                  try {
+                      const entries = await fs.readdir(lib);
+                      return entries.map((entry) => path.join(lib, entry, 'site-packages'));
+                  } catch {
+                      return [];
+                  }
+              })();
+
+    for (const root of roots) {
+        try {
+            for (const entry of await fs.readdir(root)) {
+                // "iobroker-0.6.0.dist-info"; the name is normalised by the installer, so an exact
+                // prefix match is enough and avoids matching "iobroker_something".
+                const match = new RegExp(`^${SDK_PACKAGE}-(.+)\\.dist-info$`, 'i').exec(entry);
+
+                if (match) {
+                    return match[1];
+                }
+            }
+        } catch {
+            // no such directory -- try the next candidate
+        }
+    }
+
+    return null;
 }
 
 interface PythonAdapterInfo {
@@ -89,6 +167,8 @@ interface PythonAdapterInfo {
     ready: boolean;
     /** The venv exists but was built for another adapter version or other dependencies */
     stale: boolean;
+    /** Version of the `iobroker` SDK installed in the venv; null when there is none to read */
+    sdkVersion: string | null;
     /** What the environment was built for; null when there is no stamp */
     stamp: EnvironmentStamp | null;
     /** Install the package linked to its sources rather than copied */
@@ -299,6 +379,7 @@ class PyController extends utils.Adapter {
             stale,
             stamp,
             editable,
+            sdkVersion: exists ? await readSdkVersion(venvDir) : null,
         };
     }
 
@@ -428,7 +509,11 @@ class PyController extends utils.Adapter {
         if (configured) {
             try {
                 await fs.access(configured);
-                return configured;
+
+                if (isExecutableImage(configured)) {
+                    return configured;
+                }
+                this.log.warn(`Configured uv path is not an executable: ${configured}`);
             } catch {
                 this.log.warn(`Configured uv path does not exist: ${configured}`);
             }
@@ -438,10 +523,17 @@ class PyController extends utils.Adapter {
 
         try {
             const { stdout } = await run(probe, ['uv']);
-            const first = stdout.split(/\r?\n/).find(Boolean);
 
-            if (first) {
-                return first.trim();
+            // Every line, and only the ones that are actually an executable image. `where` looks in
+            // the *current directory* before PATH and honours PATHEXT, which on Windows contains
+            // `.JS` -- so it answered with this adapter's own compiled `build/uv.js`, and spawning
+            // that failed with the entirely unhelpful `spawn EFTYPE`.
+            for (const line of stdout.split(/\r?\n/)) {
+                const candidate = line.trim();
+
+                if (candidate && isExecutableImage(candidate)) {
+                    return candidate;
+                }
             }
         } catch {
             // not on PATH, which is the normal case on a fresh system
@@ -474,34 +566,51 @@ class PyController extends utils.Adapter {
      * One venv per adapter, not per instance: the isolation is meant to guard
      * against version conflicts between adapters, not between instances of the
      * same adapter.
+     *
+     * @param info the adapter whose environment to build
      */
     private async buildEnvironment(info: PythonAdapterInfo): Promise<void> {
         if (!this.uvPath) {
             throw new Error('uv is missing -- cannot build the environment');
         }
-        this.log.info(
-            `Building environment for ${info.name} ${info.version}${info.editable ? ' (editable, linked to its sources)' : ''} ...`,
-        );
-        await fs.mkdir(info.envDir, { recursive: true });
-        // --clear, because uv refuses to touch an existing environment. A rebuild is meant to
-        // replace it: reusing one that was resolved for different dependencies is what this whole
-        // stamping mechanism exists to prevent.
-        await run(this.uvPath, ['venv', '--clear', info.venvDir]);
-        // --refresh, because uv caches the package index: a version published minutes ago is
-        // otherwise reported as non-existent.
-        const install = ['pip', 'install', '--refresh', '--python', info.interpreter];
 
-        if (info.editable) {
-            install.push('-e');
+        // Nothing may be running out of the venv while it is replaced. On Windows an interpreter
+        // that is executing holds its own image open, so `uv venv --clear` cannot delete
+        // `Scripts\\python.exe` and the whole rebuild fails with "Zugriff verweigert (os error 5)".
+        // Elsewhere the removal succeeds and the running process is left with a half-deleted
+        // environment, which is worse: it fails later and somewhere else.
+        const stopped = await this.stopInstancesOf(info.name);
+
+        try {
+            this.log.info(
+                `Building environment for ${info.name} ${info.version}${info.editable ? ' (editable, linked to its sources)' : ''} ...`,
+            );
+            await fs.mkdir(info.envDir, { recursive: true });
+            // --clear, because uv refuses to touch an existing environment. A rebuild is meant to
+            // replace it: reusing one that was resolved for different dependencies is what this
+            // whole stamping mechanism exists to prevent.
+            await run(this.uvPath, ['venv', '--clear', info.venvDir]);
+            // --refresh, because uv caches the package index: a version published minutes ago is
+            // otherwise reported as non-existent.
+            const install = ['pip', 'install', '--refresh', '--python', info.interpreter];
+
+            if (info.editable) {
+                install.push('-e');
+            }
+
+            install.push('.');
+
+            await run(this.uvPath, install, { cwd: info.pythonDir });
+            // Only after the install succeeded -- a stamp written earlier would mark a half-built
+            // environment as current.
+            await this.writeStamp(info);
+            this.log.info(`Environment for ${info.name} ${info.version} is ready`);
+        } finally {
+            // Also after a failed build. Leaving an instance disabled would be this adapter
+            // silently changing the user's configuration; js-controller declines to start it while
+            // the environment is broken anyway, and says so.
+            await this.startInstances(stopped);
         }
-
-        install.push('.');
-
-        await run(this.uvPath, install, { cwd: info.pythonDir });
-        // Only after the install succeeded -- a stamp written earlier would mark a half-built
-        // environment as current.
-        await this.writeStamp(info);
-        this.log.info(`Environment for ${info.name} ${info.version} is ready`);
     }
 
     /**
@@ -529,7 +638,6 @@ class PyController extends utils.Adapter {
             try {
                 this.log.info(`Environment for ${adapter.name} is ${why} -- rebuilding`);
                 await this.buildEnvironment(adapter);
-                await this.restartInstancesOf(adapter.name);
             } catch (e) {
                 this.log.error(`Could not build the environment for ${adapter.name}: ${(e as Error).message}`);
             }
@@ -537,19 +645,21 @@ class PyController extends utils.Adapter {
     }
 
     /**
-     * Restart the enabled instances of an adapter after its environment changed
+     * Stop the enabled instances of an adapter so its environment can be replaced
      *
-     * js-controller refuses to start a Python instance whose environment is missing or stale, so
-     * something has to nudge it once the environment is in place. Toggling `enabled` is the same
-     * mechanism the admin UI uses.
+     * Clearing `enabled` is the same mechanism the admin UI uses; js-controller notices the object
+     * change and shuts the process down. Waiting for that to happen is the point -- the venv cannot
+     * be deleted while an interpreter inside it is running.
      *
      * @param adapterName name of the adapter without the `iobroker.` prefix
+     * @returns the instance ids that were enabled, to be handed to {@link startInstances}
      */
-    private async restartInstancesOf(adapterName: string): Promise<void> {
+    private async stopInstancesOf(adapterName: string): Promise<string[]> {
         const view = await this.getObjectViewAsync('system', 'instance', {
             startkey: `${SYSTEM_ADAPTER_PREFIX}${adapterName}.`,
             endkey: `${SYSTEM_ADAPTER_PREFIX}${adapterName}.香`,
         });
+        const stopped: string[] = [];
 
         for (const row of view?.rows ?? []) {
             const obj = row.value;
@@ -558,13 +668,47 @@ class PyController extends utils.Adapter {
                 continue;
             }
 
-            this.log.info(`Restarting ${obj._id} now that its environment is ready`);
-            await this.extendForeignObjectAsync(obj._id, {
-                common: { enabled: false },
-            });
-            await this.extendForeignObjectAsync(obj._id, {
-                common: { enabled: true },
-            });
+            this.log.info(`Stopping ${obj._id} to rebuild its environment`);
+            await this.extendForeignObjectAsync(obj._id, { common: { enabled: false } });
+            stopped.push(obj._id);
+        }
+
+        await Promise.all(stopped.map((id) => this.waitUntilStopped(id)));
+
+        return stopped;
+    }
+
+    /**
+     * Wait for an instance's process to be gone
+     *
+     * @param instanceId full object id, `system.adapter.<name>.<n>`
+     */
+    private async waitUntilStopped(instanceId: string): Promise<void> {
+        const deadline = Date.now() + STOP_TIMEOUT_MS;
+
+        while (Date.now() < deadline) {
+            const alive = await this.getForeignStateAsync(`${instanceId}.alive`);
+
+            if (!alive?.val) {
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, STOP_POLL_MS));
+        }
+
+        // Not fatal on its own: the build may still succeed, and if it does not, the error names
+        // the real obstacle. Saying so beats a bare permission error further down.
+        this.log.warn(`${instanceId} did not stop within ${STOP_TIMEOUT_MS / 1000}s -- rebuilding anyway`);
+    }
+
+    /**
+     * Re-enable instances that {@link stopInstancesOf} disabled
+     *
+     * @param instanceIds what that call returned
+     */
+    private async startInstances(instanceIds: string[]): Promise<void> {
+        for (const id of instanceIds) {
+            this.log.info(`Starting ${id} again`);
+            await this.extendForeignObjectAsync(id, { common: { enabled: true } });
         }
     }
 
