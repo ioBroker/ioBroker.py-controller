@@ -77,6 +77,19 @@ interface EnvironmentStamp {
     builtAt?: string;
     /** Version of the interpreter in the environment */
     pythonVersion?: string;
+    /**
+     * Set while this environment is being replaced, cleared when the build succeeds.
+     *
+     * `uv venv --clear` empties the venv and puts the interpreter back in the first moment, so for
+     * the seconds that the install takes there is an environment that looks complete and holds
+     * nothing. js-controller checks the interpreter and this stamp before starting an instance;
+     * without the flag both say yes, and the adapter dies on an import of a package that was there
+     * a second earlier.
+     *
+     * Left set when a build is interrupted -- an environment nobody finished is one nothing should
+     * start from until it has been rebuilt, and this is what makes the next reconcile do that.
+     */
+    building?: boolean;
 }
 
 /**
@@ -402,7 +415,11 @@ class PyController extends utils.Adapter {
         // environments, so nothing goes down while this catches up.
         const stale =
             exists &&
-            (stamp === null ||
+            // A stamp still marked `building` belongs to a rebuild that never finished -- this
+            // process killed, the machine restarted. The venv looks complete because the
+            // interpreter is back, so nothing else here would notice.
+            (stamp?.building === true ||
+                stamp === null ||
                 stamp.adapterVersion !== version ||
                 // Switching a working copy in or out has to rebuild: a copied install keeps
                 // serving the old sources, an editable one points at a directory that may be gone.
@@ -667,6 +684,11 @@ class PyController extends utils.Adapter {
         // Elsewhere the removal succeeds and the running process is left with a half-deleted
         // environment, which is worse: it fails later and somewhere else.
         const stopped = await this.stopInstancesOf(info.name);
+        // Before anything is touched, not after: from here until the stamp is rewritten the
+        // environment is not something to start an adapter from, and saying so is the only way
+        // js-controller can know. It also survives this process being killed mid-build, which is
+        // exactly when a half-filled venv would otherwise look finished.
+        await this.markBuilding(info);
 
         try {
             await this.progress(`Creating the environment for ${info.name} ${info.version}`);
@@ -753,6 +775,25 @@ class PyController extends utils.Adapter {
             },
             native: {},
         });
+    }
+
+    /**
+     * Record that this environment is mid-rebuild, before the venv is emptied.
+     *
+     * Keeps whatever the previous stamp said and only adds the flag, so a failed build still shows
+     * what the environment used to be rather than losing that too.
+     *
+     * @param info the adapter whose environment is about to be replaced
+     */
+    private async markBuilding(info: PythonAdapterInfo): Promise<void> {
+        const stamp: EnvironmentStamp = { ...(info.stamp ?? { adapterVersion: info.version }), building: true };
+
+        await fs.mkdir(info.envDir, { recursive: true });
+        await fs.writeFile(
+            path.join(info.envDir, STAMP_FILE),
+            `${JSON.stringify(stamp, null, 2)}
+`,
+        );
     }
 
     /**
