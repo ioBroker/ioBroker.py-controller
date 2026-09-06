@@ -1,4 +1,11 @@
+<img src="admin/py-controller.svg" alt="logo" height="128">
+
 # ioBroker.py-controller
+
+![Number of Installations](http://iobroker.live/badges/py-controller-installed.svg) ![Number of Installations](http://iobroker.live/badges/py-controller-stable.svg) [![NPM version](http://img.shields.io/npm/v/iobroker.py-controller.svg)](https://www.npmjs.com/package/iobroker.py-controller)
+[![Downloads](https://img.shields.io/npm/dm/iobroker.py-controller.svg)](https://www.npmjs.com/package/iobroker.py-controller)
+
+[![NPM](https://nodei.co/npm/iobroker.py-controller.png?downloads=true)](https://nodei.co/npm/iobroker.py-controller/)
 
 Manages Python **environments** for Python adapters — provisioning interpreters,
 creating and repairing a venv per adapter, installing packages, showing state.
@@ -91,10 +98,10 @@ The settings page opens with a table of every Python adapter: whether its
 environment is present and current, which SDK and which Python are in it, and
 its instances beside it —
 
-| Adapter | Environment | SDK | Python | Instances | |
-|---|---|---|---|---|---|
-| **python** 0.0.1 | ✅ ready | 0.8.0 | 3.13.7 | `python.0` (green) | ⟳ |
-| **pyexample** 0.0.2 | ⚠️ stale (built for 0.0.1) | 0.8.0 | 3.13.7 | `pyexample.0` (grey) | ⟳ |
+| Adapter             | Environment                | SDK   | Python | Instances            |    |
+|---------------------|----------------------------|-------|--------|----------------------|----|
+| **python** 0.0.1    | ✅ ready                    | 0.8.0 | 3.13.7 | `python.0` (green)   | ⟳  |
+| **pyexample** 0.0.2 | ⚠️ stale (built for 0.0.1) | 0.8.0 | 3.13.7 | `pyexample.0` (grey) | ⟳  |
 
 — because from the instance list in admin the two things look identical: an
 instance somebody switched off, and an instance the controller refuses to start
@@ -173,4 +180,25 @@ before.
 
 ## License
 
-MIT
+MIT License
+
+Copyright (c) 2026 Denis Haev <dogafox@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
