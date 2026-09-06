@@ -1,6 +1,6 @@
 {
   "name": "iobroker.py-controller",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Managed Python-Environments for Python-Adapter in ioBroker",
   "author": {
     "name": "bluefox",
