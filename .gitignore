@@ -1,6 +1,7 @@
+# package-lock.json is committed on purpose: the CI action caches npm from it, and
+# dependabot has nothing to update without it.
 node_modules/
 build/
 *.log
 .venv/
-package-lock.json
 .idea/
