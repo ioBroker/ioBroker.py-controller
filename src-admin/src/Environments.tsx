@@ -2,8 +2,14 @@ import React from 'react';
 
 import {
     Box,
+    Button,
     Chip,
     CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogContentText,
+    DialogTitle,
     IconButton,
     Paper,
     Table,
@@ -17,6 +23,7 @@ import {
 } from '@mui/material';
 import {
     CheckCircle as ReadyIcon,
+    Close as CancelIcon,
     Error as ProblemIcon,
     HelpOutlined as UnknownIcon,
     Refresh as RebuildIcon,
@@ -63,6 +70,8 @@ interface EnvironmentsState extends ConfigGenericState {
     error: string;
     /** The adapter whose environment is being rebuilt right now, or `''`. */
     rebuilding: string;
+    /** The adapter whose rebuild is waiting to be confirmed, or `''`. */
+    asking: string;
 }
 
 /**
@@ -93,6 +102,7 @@ export default class Environments extends ConfigGeneric<ConfigGenericProps, Envi
             lines: null,
             error: '',
             rebuilding: '',
+            asking: '',
         };
     }
 
@@ -216,7 +226,7 @@ export default class Environments extends ConfigGeneric<ConfigGenericProps, Envi
     private async subscribe(ids: string[]): Promise<void> {
         const wanted = [...new Set(ids)].sort();
 
-        if (wanted.join(' ') === this.subscribed.join(' ')) {
+        if (wanted.join(' ') === this.subscribed.join(' ')) {
             return;
         }
 
@@ -249,11 +259,7 @@ export default class Environments extends ConfigGeneric<ConfigGenericProps, Envi
             return;
         }
 
-        if (!window.confirm(I18n.t('py_Rebuild the environment of %s? The adapter is stopped while it happens.', adapter))) {
-            return;
-        }
-
-        this.setState({ rebuilding: adapter, error: '' });
+        this.setState({ asking: '', rebuilding: adapter, error: '' });
 
         try {
             const answer = (await this.props.oContext.socket.sendTo(
@@ -276,6 +282,54 @@ export default class Environments extends ConfigGeneric<ConfigGenericProps, Envi
             }
         }
     };
+
+    /**
+     * Ask before replacing an environment.
+     *
+     * A dialog belonging to this page, never `window.confirm`: the browser's own freezes the whole
+     * tab, cannot be styled or translated with the rest of the UI, and announces itself as coming
+     * from "localhost:8081" rather than from the adapter the user is configuring.
+     */
+    private renderConfirmDialog(): React.JSX.Element | null {
+        if (!this.state.asking) {
+            return null;
+        }
+
+        const adapter = this.state.asking;
+
+        return (
+            <Dialog
+                open
+                onClose={() => this.setState({ asking: '' })}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>{I18n.t('py_Rebuild the environment of %s?', adapter)}</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        {I18n.t('py_The adapter is stopped while its environment is replaced, and started again afterwards.')}
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        startIcon={<RebuildIcon />}
+                        onClick={() => void this.rebuild(adapter)}
+                    >
+                        {I18n.t('py_Rebuild')}
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        startIcon={<CancelIcon />}
+                        onClick={() => this.setState({ asking: '' })}
+                    >
+                        {I18n.t('py_Cancel')}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+        );
+    }
 
     /** The environment's state as an icon plus the word behind it. */
     private static renderStatus(line: EnvironmentLine): React.JSX.Element {
@@ -349,6 +403,7 @@ export default class Environments extends ConfigGeneric<ConfigGenericProps, Envi
 
         return (
             <TableContainer component={Paper} sx={{ width: '100%' }}>
+                {this.renderConfirmDialog()}
                 <Table size="small">
                     <TableHead>
                         <TableRow>
@@ -377,7 +432,7 @@ export default class Environments extends ConfigGeneric<ConfigGenericProps, Envi
                                             <IconButton
                                                 size="small"
                                                 disabled={!!this.state.rebuilding}
-                                                onClick={() => void this.rebuild(line.adapter)}
+                                                onClick={() => this.setState({ asking: line.adapter })}
                                             >
                                                 {this.state.rebuilding === line.adapter ? (
                                                     <CircularProgress size={20} />
