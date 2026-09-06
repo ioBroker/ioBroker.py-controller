@@ -85,6 +85,29 @@ exactly like an instance that is broken. These states are where the difference i
 visible — and they are bindable from a visualisation or a script, which the
 configuration dialog is not.
 
+## The diagnosis table
+
+The two buttons on the settings page — "Check prerequisites" and "Rebuild
+environments" — fill one table underneath them, with a checkbox per line and the
+time the diagnosis was taken above it:
+
+| ✓ | Level | Checked | Result | What to do |
+|---|---|---|---|---|
+| ☑ | ok | uv | uv 0.12.7 at … | |
+| ☐ | warning | uv | not installed yet | It will be downloaded automatically the first time an environment is built. |
+
+The checkbox is what the eye finds first, and the level is beside it because a
+checkbox has two states while a finding has three: a warning is not a failure.
+Every line that is not ok carries what to do about it, so the table is the whole
+answer rather than a pointer to the log.
+
+Nothing in it is a setting. Both attributes start with an underscore, which keeps
+them out of the saved configuration — a diagnosis is what was true a minute ago.
+The timestamp is there for the same reason: the table stays on screen after the
+check that produced it, and a result whose age is invisible gets read as current
+long after it stopped being so. Use the export button for a CSV to paste into a
+forum post.
+
 ## Removing an adapter
 
 Uninstalling a Python adapter leaves a few hundred megabytes of virtual

@@ -30,7 +30,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { runCheck } from './check.js';
+import { runCheck, type CheckOutcome, type Finding } from './check.js';
 import { pruneDecision } from './environments.js';
 import { readPackages } from './packages.js';
 import { downloadUv, managedUvPath } from './uv.js';
@@ -236,6 +236,45 @@ interface PythonAdapterInfo {
     stamp: EnvironmentStamp | null;
     /** Install the package linked to its sources rather than copied */
     editable: boolean;
+}
+
+/**
+ * One line of the diagnosis table in the settings page.
+ *
+ * The same shape whichever button produced it, so both write into the same table: a check reports
+ * what it found, a rebuild reports what each environment ended up with, and a user reading the
+ * result does not have to learn two layouts.
+ *
+ * `ok` exists next to `severity` because a checkbox is what the eye finds first, and a checkbox has
+ * two states while a finding has three. The word stays in its own column, so a warning is not
+ * mistaken for a failure.
+ */
+interface DiagnosisRow {
+    /** Checked in the table: nothing to do about this line. */
+    ok: boolean;
+    /** `ok`, `warning` or `error` -- what the checkbox alone cannot say. */
+    severity: string;
+    /** What was looked at: `uv`, `Platform`, an adapter name. */
+    subject: string;
+    /** What was found. */
+    detail: string;
+    /** What to do about it; empty when there is nothing to do. */
+    hint: string;
+}
+
+/**
+ * Turn findings into table rows.
+ *
+ * @param findings what the check or the rebuild produced
+ */
+function toRows(findings: Finding[]): DiagnosisRow[] {
+    return findings.map((finding) => ({
+        ok: finding.severity === 'ok',
+        severity: finding.severity,
+        subject: finding.subject,
+        detail: finding.detail,
+        hint: finding.hint ?? '',
+    }));
 }
 
 /**
@@ -1175,23 +1214,11 @@ class PyController extends utils.Adapter {
                 break;
             }
             case 'rebuildAll': {
-                this.reply(obj, {
-                    copyDialog: {
-                        title: 'Rebuilt environments',
-                        type: 'yaml',
-                        text: await this.rebuildAll(),
-                    },
-                });
+                this.replyWithDiagnosis(obj, await this.rebuildAll());
                 break;
             }
             case 'check': {
-                this.reply(obj, {
-                    copyDialog: {
-                        title: 'Python prerequisites',
-                        type: 'yaml',
-                        text: (await this.check()).report,
-                    },
-                });
+                this.replyWithDiagnosis(obj, (await this.check()).findings);
                 break;
             }
             default:
@@ -1211,16 +1238,22 @@ class PyController extends utils.Adapter {
      * holding an old SDK, and skipping it would make the button do nothing in the case it exists
      * for.
      *
-     * @returns a YAML report naming what each environment ended up with
+     * @returns one finding per adapter, naming what its environment ended up with
      */
-    private async rebuildAll(): Promise<string> {
+    private async rebuildAll(): Promise<Finding[]> {
         const adapters = await this.discoverPythonAdapters();
-        const lines = [`# ${new Date().toISOString()}`, 'rebuilt:'];
-        const scalar = (text: string): string => `'${text.replace(/'/g, "''")}'`;
 
         if (!adapters.length) {
-            return [...lines, "  - 'no Python adapters installed'"].join('\n');
+            return [
+                {
+                    subject: 'Python adapters',
+                    severity: 'ok',
+                    detail: 'none installed -- nothing to rebuild',
+                },
+            ];
         }
+
+        const findings: Finding[] = [];
 
         for (const adapter of adapters) {
             try {
@@ -1229,13 +1262,22 @@ class PyController extends utils.Adapter {
                 // environment ended up with, and that is only known afterwards.
                 const sdk = await readSdkVersion(adapter.venvDir);
 
-                lines.push(`  - ${scalar(`OK   | ${adapter.name} ${adapter.version}${sdk ? `, SDK ${sdk}` : ''}`)}`);
+                findings.push({
+                    subject: adapter.name,
+                    severity: 'ok',
+                    detail: `${adapter.version} rebuilt${sdk ? `, SDK ${sdk}` : ''}`,
+                });
             } catch (e) {
-                lines.push(`  - ${scalar(`FAIL | ${adapter.name}: ${(e as Error).message}`)}`);
+                findings.push({
+                    subject: adapter.name,
+                    severity: 'error',
+                    detail: `${adapter.version}: ${(e as Error).message}`,
+                    hint: 'Check the log of this adapter for what uv reported, and that the environment directory is writable.',
+                });
             }
         }
 
-        return lines.join('\n');
+        return findings;
     }
 
     /**
@@ -1245,7 +1287,7 @@ class PyController extends utils.Adapter {
      * pressing "check" would install something, and the answer to "is uv present?" would always be
      * yes the second time.
      */
-    private async check(): Promise<{ ok: boolean; report: string }> {
+    private async check(): Promise<CheckOutcome> {
         const uvPath = await this.findUv(false);
         let uvVersion: string | null = null;
 
@@ -1275,6 +1317,29 @@ class PyController extends utils.Adapter {
         this.log[outcome.ok ? 'info' : 'warn'](`Prerequisite check: ${outcome.ok ? 'ok' : 'problems found'}`);
 
         return outcome;
+    }
+
+    /**
+     * Answer a settings-page button with the table rather than with a dialog.
+     *
+     * `native` is how a sendTo hands values back to the form, and the two attributes are read by
+     * the table and the line above it. Both start with an underscore, which is what keeps them out
+     * of the saved configuration -- a diagnosis is what was true a minute ago, not a setting.
+     *
+     * The timestamp is not decoration. The table stays on screen after the check that produced it,
+     * and a result whose age is invisible is one a user will read as current long after it stopped
+     * being so.
+     *
+     * @param obj the message to answer
+     * @param findings what to show
+     */
+    private replyWithDiagnosis(obj: ioBroker.Message, findings: Finding[]): void {
+        this.reply(obj, {
+            native: {
+                _diagnosedAt: new Date().toLocaleString(),
+                _diagnosis: toRows(findings),
+            },
+        });
     }
 
     private reply(obj: ioBroker.Message, payload: unknown): void {
