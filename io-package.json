@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "py-controller",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "titleLang": {
       "en": "Python Controller",
       "de": "Python Controller",
@@ -54,6 +54,10 @@
       }
     ],
     "news": {
+      "0.1.0": {
+        "en": "First working release: builds and rebuilds the virtual environment of every Python adapter with uv, reports each environment as states, removes the environment of an uninstalled adapter, and lets extra packages be requested through native.userPackages",
+        "de": "Erste funktionsfähige Version: baut die virtuelle Umgebung jedes Python-Adapters mit uv auf und erneuert sie, meldet jede Umgebung als States, entfernt die Umgebung eines deinstallierten Adapters, und erlaubt zusätzliche Pakete über native.userPackages"
+      },
       "0.0.1": {
         "en": "Initial skeleton",
         "de": "Erstes Gerüst"
