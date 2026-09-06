@@ -31,6 +31,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { runCheck } from './check.js';
+import { pruneDecision } from './environments.js';
 import { readPackages } from './packages.js';
 import { downloadUv, managedUvPath } from './uv.js';
 
@@ -57,6 +58,14 @@ const SYSTEM_ADAPTER_PREFIX = 'system.adapter.';
  * having to understand Python packaging.
  */
 const STAMP_FILE = 'environment.json';
+
+/**
+ * Channel under which each adapter's environment is reported.
+ *
+ * One place to look for "is this adapter's environment there, and what is in it", without opening
+ * a configuration dialog: `py-controller.0.adapters.<name>.*`.
+ */
+const ADAPTERS_CHANNEL = 'adapters';
 
 /** How long to wait for an instance to actually be gone before rebuilding its environment. */
 const STOP_TIMEOUT_MS = 15_000;
@@ -229,6 +238,83 @@ interface PythonAdapterInfo {
     editable: boolean;
 }
 
+/**
+ * The five states reported per adapter, minus the two flags every one of them shares.
+ *
+ * In one place so the object definitions cannot drift from the writes below them, and so adding a
+ * sixth is one line rather than three.
+ */
+const ADAPTER_STATE_OBJECTS: Record<string, ioBroker.StateCommon> = {
+    ready: {
+        name: 'Environment is present and current',
+        type: 'boolean',
+        role: 'indicator.state',
+        read: true,
+        write: false,
+    },
+    status: {
+        name: 'Why it is not ready, when it is not',
+        type: 'string',
+        role: 'text',
+        read: true,
+        write: false,
+    },
+    version: {
+        name: 'Version of the installed adapter',
+        type: 'string',
+        role: 'text',
+        read: true,
+        write: false,
+    },
+    sdkVersion: {
+        name: 'Version of the iobroker SDK in the environment',
+        type: 'string',
+        role: 'text',
+        read: true,
+        write: false,
+    },
+    pythonVersion: {
+        name: 'Python the environment was built with',
+        type: 'string',
+        role: 'text',
+        read: true,
+        write: false,
+    },
+};
+
+/**
+ * One word for the state of an environment, in the vocabulary the log already uses.
+ *
+ * Shared between the startup log and the `status` state on purpose: a user comparing the two
+ * should not have to work out that "missing" and "not built" are the same thing.
+ *
+ * @param adapter the adapter whose environment is being described
+ * @returns `ready`, `missing`, `unstamped`, or `stale (built for <version>)`
+ */
+function environmentState(adapter: PythonAdapterInfo): string {
+    if (adapter.ready) {
+        return 'ready';
+    }
+    if (!adapter.stale) {
+        return 'missing';
+    }
+    return adapter.stamp === null ? 'unstamped' : `stale (built for ${adapter.stamp.adapterVersion})`;
+}
+
+/**
+ * Whether a path exists, as a question rather than as an exception.
+ *
+ * @param target the path to look for
+ */
+async function exists(target: string): Promise<boolean> {
+    try {
+        await fs.stat(target);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 class PyController extends utils.Adapter {
     /** Root of all managed environments: iobroker-data/py/<adapter>/ */
     private envRoot = '';
@@ -254,6 +340,7 @@ class PyController extends utils.Adapter {
         await this.ensureProgressObjects();
 
         this.uvPath = await this.findUv();
+        await this.publishUvVersion();
         if (this.uvPath) {
             this.log.info(`Found uv: ${this.uvPath}`);
         } else {
@@ -263,22 +350,21 @@ class PyController extends utils.Adapter {
             );
         }
 
-        const adapters = await this.discoverPythonAdapters();
+        let adapters = await this.discoverPythonAdapters();
         this.log.info(`Found ${adapters.length} Python adapter(s)`);
         for (const adapter of adapters) {
-            const state = adapter.ready
-                ? 'ready'
-                : !adapter.stale
-                  ? 'missing'
-                  : adapter.stamp === null
-                    ? 'unstamped'
-                    : `stale (built for ${adapter.stamp.adapterVersion})`;
-            this.log.info(`  ${adapter.name} ${adapter.version}: venv ${state}`);
+            this.log.info(`  ${adapter.name} ${adapter.version}: venv ${environmentState(adapter)}`);
         }
 
         if ((this.config as { autoBuildEnvironments?: boolean }).autoBuildEnvironments !== false) {
             await this.reconcileEnvironments(adapters);
+            // Re-read: what matters in the states below is what the build produced, not what was
+            // there before it ran.
+            adapters = await this.discoverPythonAdapters();
         }
+
+        await this.publishAdapterStates(adapters);
+        await this.pruneEnvironments();
 
         // Without this, installing a Python adapter did nothing until py-controller happened to be
         // restarted: js-controller refused to start the instance for a missing environment, and
@@ -295,7 +381,17 @@ class PyController extends utils.Adapter {
      * @param obj its new content, or null when it was deleted
      */
     private onObjectChange(id: string, obj: ioBroker.Object | null | undefined): void {
-        if (!id.startsWith(SYSTEM_ADAPTER_PREFIX) || !obj) {
+        if (!id.startsWith(SYSTEM_ADAPTER_PREFIX)) {
+            return;
+        }
+
+        // A deletion carries no object, so there is nothing left to read the platform from -- the
+        // very thing that made an uninstalled adapter's environment sit on disk forever. Every
+        // deletion under system.adapter therefore schedules a pass; the debounce collapses the
+        // burst that removing an adapter produces, and the pass itself only acts on directories
+        // whose adapter is genuinely gone.
+        if (!obj) {
+            this.scheduleReconcile();
             return;
         }
 
@@ -338,13 +434,17 @@ class PyController extends utils.Adapter {
         this.reconciling = true;
 
         try {
-            const adapters = await this.discoverPythonAdapters();
+            let adapters = await this.discoverPythonAdapters();
 
             // Everything already current is the normal case here, and saying so on every object
             // change would drown the log.
             if (adapters.some((adapter) => !adapter.ready)) {
                 await this.reconcileEnvironments(adapters);
+                adapters = await this.discoverPythonAdapters();
             }
+
+            await this.publishAdapterStates(adapters);
+            await this.pruneEnvironments();
         } catch (e) {
             this.log.error(`Reconcile failed: ${(e as Error).message}`);
         } finally {
@@ -775,6 +875,146 @@ class PyController extends utils.Adapter {
             },
             native: {},
         });
+        // Admin's host tab reports the Node.js and npm versions of a host. The two versions that
+        // decide whether a Python adapter can run at all had no such place: they were in the
+        // prerequisite report, which has to be asked for.
+        await this.setObjectNotExistsAsync('info.uvVersion', {
+            type: 'state',
+            common: {
+                name: 'Version of uv, which builds the environments',
+                type: 'string',
+                role: 'text',
+                read: true,
+                write: false,
+                def: '',
+            },
+            native: {},
+        });
+    }
+
+    /**
+     * Report which uv is in use, or that there is none.
+     *
+     * Written once at startup. uv is either found on the system or downloaded by this adapter, and
+     * which of the two happened is exactly the thing a user asks about when an environment will
+     * not build.
+     */
+    private async publishUvVersion(): Promise<void> {
+        let version = '';
+
+        if (this.uvPath) {
+            try {
+                const { stdout } = await run(this.uvPath, ['--version']);
+                version = stdout.trim();
+            } catch (e) {
+                this.log.warn(`uv found at ${this.uvPath} but not runnable: ${(e as Error).message}`);
+            }
+        }
+
+        await this.setState('info.uvVersion', { val: version, ack: true });
+    }
+
+    /**
+     * Report every adapter's environment as states, so it can be seen without opening a dialog.
+     *
+     * Until now the only place that knew whether an environment was there was this adapter's
+     * configuration page, and only while somebody had it open. An instance that will not start
+     * because its environment is missing looks in admin exactly like an instance that is broken,
+     * and the answer sat behind two clicks in a different adapter.
+     *
+     * One channel per adapter rather than one state listing them all: this way a visualisation can
+     * bind to a single adapter, a script can react to one becoming ready, and the object tree
+     * groups it the way ioBroker groups everything else.
+     *
+     * @param adapters the adapters found on this host
+     */
+    private async publishAdapterStates(adapters: PythonAdapterInfo[]): Promise<void> {
+        for (const adapter of adapters) {
+            const base = `${ADAPTERS_CHANNEL}.${adapter.name}`;
+
+            await this.setObjectNotExistsAsync(base, {
+                type: 'channel',
+                common: { name: `Python environment of ${adapter.name}` },
+                native: {},
+            });
+
+            for (const [name, common] of Object.entries(ADAPTER_STATE_OBJECTS)) {
+                await this.setObjectNotExistsAsync(`${base}.${name}`, {
+                    type: 'state',
+                    common: { ...common, read: true, write: false },
+                    native: {},
+                });
+            }
+
+            await this.setState(`${base}.ready`, { val: adapter.ready, ack: true });
+            await this.setState(`${base}.status`, { val: environmentState(adapter), ack: true });
+            await this.setState(`${base}.version`, { val: adapter.version, ack: true });
+            // Empty rather than null for the three that may be unknown: a string state that is
+            // sometimes null reads in admin as an error, and "not built yet" is not one.
+            await this.setState(`${base}.sdkVersion`, { val: adapter.sdkVersion ?? '', ack: true });
+            await this.setState(`${base}.pythonVersion`, {
+                val: adapter.stamp?.pythonVersion ?? '',
+                ack: true,
+            });
+        }
+    }
+
+    /**
+     * Remove the environments of adapters that are no longer installed.
+     *
+     * A venv is a few hundred megabytes. Nothing used to remove them: the object change that says
+     * an adapter is gone carries no object, so the handler that decides whether something is a
+     * Python adapter returned early and the directory stayed for good.
+     *
+     * Deliberately careful, because this deletes. A directory is only removed when the adapter it
+     * belongs to has no installation directory left *and* the directory looks like one this
+     * adapter built. Anything else is left alone -- an adapter that is installed but has no
+     * instance keeps its environment, which is the state between installing and configuring.
+     */
+    private async pruneEnvironments(): Promise<void> {
+        let entries;
+
+        try {
+            entries = await fs.readdir(this.envRoot, { withFileTypes: true });
+        } catch {
+            // No environments have been built yet; there is nothing to prune.
+            return;
+        }
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) {
+                continue;
+            }
+
+            const dir = utils.commonTools.getAdapterDir(entry.name);
+            const envDir = path.join(this.envRoot, entry.name);
+
+            const decision = pruneDecision({
+                // The adapter's directory, not an instance object: an adapter that has been added
+                // but not yet configured has no instance, and its freshly built environment has to
+                // survive that window.
+                installed: !!dir && (await exists(path.join(dir, 'io-package.json'))),
+                stamped: await exists(path.join(envDir, STAMP_FILE)),
+                venv: await exists(path.join(envDir, 'venv')),
+            });
+
+            if (decision === 'keep') {
+                continue;
+            }
+
+            if (decision === 'foreign') {
+                this.log.warn(`${envDir} does not look like an environment this adapter built, leaving it`);
+                continue;
+            }
+
+            try {
+                await fs.rm(envDir, { recursive: true, force: true });
+                await this.delObjectAsync(`${ADAPTERS_CHANNEL}.${entry.name}`, { recursive: true });
+                this.log.info(`Removed the environment of "${entry.name}", which is no longer installed`);
+            } catch (e) {
+                this.log.warn(`Could not remove the environment of "${entry.name}": ${(e as Error).message}`);
+            }
+        }
     }
 
     /**

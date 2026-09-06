@@ -36,7 +36,7 @@
     "scripts": {
         "build": "tsc -p tsconfig.build.json",
         "test:package": "mocha test/package --exit --config test/mocharc.custom.json",
-        "test:unit": "mocha test/check test/packages --exit --config test/mocharc.custom.json",
+        "test:unit": "mocha test/check test/packages test/environments --exit --config test/mocharc.custom.json",
         "test:integration": "mocha test/integration --exit --config test/mocharc.custom.json",
         "watch": "tsc -p tsconfig.build.json --watch",
         "lint": "eslint -c eslint.config.mjs",

@@ -66,6 +66,35 @@ Exactly one direction, so the two never become entangled:
 This way the core needs to know nothing about `pip`, `uv` or dependency
 resolution — only whether a directory is there.
 
+## What it reports
+
+Without opening this adapter's configuration page:
+
+| State | |
+|---|---|
+| `info.uvVersion` | which uv is in use, or empty when there is none |
+| `info.installing` / `info.installStatus` | an environment is being built, and what for |
+| `adapters.<name>.ready` | that adapter's environment is present and current |
+| `adapters.<name>.status` | `ready`, `missing`, `unstamped`, or `stale (built for <version>)` |
+| `adapters.<name>.version` | the installed adapter version |
+| `adapters.<name>.sdkVersion` | the `iobroker` SDK inside the environment |
+| `adapters.<name>.pythonVersion` | the Python the environment was built with |
+
+An instance that will not start because its environment is missing looks in admin
+exactly like an instance that is broken. These states are where the difference is
+visible — and they are bindable from a visualisation or a script, which the
+configuration dialog is not.
+
+## Removing an adapter
+
+Uninstalling a Python adapter leaves a few hundred megabytes of virtual
+environment behind, so this adapter clears it out on the next pass. Two things
+have to be true before anything is deleted: the adapter has no installation
+directory left, and the directory carries either the stamp file or a `venv`.
+Anything else under `iobroker-data/py/` is left where it is and reported in the
+log — an adapter that is installed but not yet configured keeps its environment,
+and so does whatever else somebody put there.
+
 ## Distributing Python adapters
 
 A Python adapter is still shipped as an npm package: `io-package.json`,
