@@ -7,6 +7,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -218,13 +219,21 @@ describe('readiness check', () => {
     });
 
     it('fails when the environment directory cannot be written', async () => {
-        const outcome = await runCheck({
-            ...base,
-            envRoot: process.platform === 'win32' ? 'Z:\\nope\\py' : '/proc/nope/py',
-        });
+        // A directory under a *file*: creating one fails with ENOTDIR everywhere, at once, and
+        // without depending on who the tests run as. The path this named before -- `/proc/nope/py`
+        // on Linux -- did not fail fast on the CI runner; it hung until mocha's timeout, which is
+        // a test reporting something other than what it covers.
+        const file = path.join(os.tmpdir(), `py-controller-not-a-directory-${process.pid}`);
+        await fs.writeFile(file, 'not a directory');
 
-        assert.equal(outcome.ok, false);
-        assert.equal(findingFor(outcome, 'Environment directory').severity, 'error');
+        try {
+            const outcome = await runCheck({ ...base, envRoot: path.join(file, 'py') });
+
+            assert.equal(outcome.ok, false);
+            assert.equal(findingFor(outcome, 'Environment directory').severity, 'error');
+        } finally {
+            await fs.rm(file, { force: true });
+        }
     });
 
     it('fails when the machine is offline and uv still has to be fetched', async () => {
