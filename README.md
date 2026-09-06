@@ -101,6 +101,11 @@ checkbox has two states while a finding has three: a warning is not a failure.
 Every line that is not ok carries what to do about it, so the table is the whole
 answer rather than a pointer to the log.
 
+Sortable, but not filterable: `ConfigTable` remembers a filter as row *indices*
+and only recomputes them when the filter itself changes, so a second check with
+fewer rows would be displayed against the previous run's indices until the
+filter is retyped. Eight rows do not need a filter enough to pay for that.
+
 Nothing in it is a setting. Both attributes start with an underscore, which keeps
 them out of the saved configuration — a diagnosis is what was true a minute ago.
 The timestamp is there for the same reason: the table stays on screen after the

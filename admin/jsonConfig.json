@@ -7,6 +7,18 @@
       "text": "This adapter manages Python environments. Processes are started by js-controller.",
       "sm": 12
     },
+    "_check": {
+      "type": "sendTo",
+      "command": "check",
+      "label": "Check prerequisites",
+      "tooltip": "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter, and fills the table below. Changes nothing.",
+      "variant": "contained",
+      "showProcess": true,
+      "timeout": 30000,
+      "newLine": true,
+      "sm": 12,
+      "md": 6
+    },
     "_installing": {
       "type": "state",
       "oid": "info.installing",
@@ -25,30 +37,24 @@
     },
     "_installStatus": {
       "type": "state",
+      "newLine": true,
       "oid": "info.installStatus",
       "control": "text",
       "addColon": true,
       "label": "Step",
       "sm": 12,
-      "md": 6
-    },
-    "_check": {
-      "type": "sendTo",
-      "command": "check",
-      "label": "Check prerequisites",
-      "title": "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter, and fills the table below. Changes nothing.",
-      "variant": "contained",
-      "showProcess": true,
-      "timeout": 30000,
-      "newLine": true,
-      "sm": 12,
-      "md": 6
+      "md": 6,
+      "dependsOnStates": {
+        "installing": ".info.installing"
+      },
+      "hidden": "!_states.installing.val"
     },
     "_rebuild": {
+      "newLine": true,
       "type": "sendTo",
       "command": "rebuildAll",
       "label": "Rebuild environments",
-      "title": "Rebuilds every Python environment from scratch, picking up the newest Python SDK, and reports the result in the table below. Each adapter is stopped while its environment is replaced and started again afterwards.",
+      "tooltip": "Rebuilds every Python environment from scratch, picking up the newest Python SDK, and reports the result in the table below. Each adapter is stopped while its environment is replaced and started again afterwards.",
       "variant": "outlined",
       "confirm": {
         "title": "Rebuild every Python environment?",
@@ -84,7 +90,7 @@
           "type": "checkbox",
           "attr": "ok",
           "title": "OK",
-          "readOnly": true,
+          "disabled": "true",
           "width": 60,
           "sort": true
         },
@@ -92,30 +98,28 @@
           "type": "text",
           "attr": "severity",
           "title": "Level",
-          "readOnly": true,
-          "width": 90,
-          "filter": true
+          "disabled": "true",
+          "width": 90
         },
         {
           "type": "text",
           "attr": "subject",
           "title": "Checked",
-          "readOnly": true,
+          "disabled": "true",
           "width": 200,
-          "filter": true,
           "sort": true
         },
         {
           "type": "text",
           "attr": "detail",
           "title": "Result",
-          "readOnly": true
+          "disabled": "true"
         },
         {
           "type": "text",
           "attr": "hint",
           "title": "What to do",
-          "readOnly": true
+          "disabled": "true"
         }
       ]
     },
