@@ -50,7 +50,7 @@
     "type": "general",
     "dependencies": [
       {
-        "js-controller": ">=7.0.0"
+        "js-controller": ">7.2.2"
       }
     ],
     "news": {
