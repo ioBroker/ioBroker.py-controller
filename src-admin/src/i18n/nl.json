@@ -1,0 +1,17 @@
+{
+  "py_Adapter": "Adapter",
+  "py_Environment": "Environment",
+  "py_Instances": "Instances",
+  "py_No Python adapter is installed.": "No Python adapter is installed.",
+  "py_Python": "Python",
+  "py_Reading environments...": "Reading environments...",
+  "py_Rebuild only this environment": "Rebuild only this environment",
+  "py_Rebuild the environment of %s? The adapter is stopped while it happens.": "Rebuild the environment of %s? The adapter is stopped while it happens.",
+  "py_SDK": "SDK",
+  "py_enabled, but not running": "enabled, but not running -- this is what a missing environment looks like",
+  "py_no environment yet": "no environment yet",
+  "py_no instance": "no instance",
+  "py_ready": "ready",
+  "py_running": "running",
+  "py_switched off": "switched off"
+}

@@ -1,0 +1,17 @@
+{
+  "py_Adapter": "Adapter",
+  "py_Environment": "Umgebung",
+  "py_Instances": "Instanzen",
+  "py_No Python adapter is installed.": "Es ist kein Python-Adapter installiert.",
+  "py_Python": "Python",
+  "py_Reading environments...": "Lese Umgebungen ...",
+  "py_Rebuild only this environment": "Nur diese Umgebung neu bauen",
+  "py_Rebuild the environment of %s? The adapter is stopped while it happens.": "Die Umgebung von %s neu bauen? Der Adapter wird währenddessen gestoppt.",
+  "py_SDK": "SDK",
+  "py_enabled, but not running": "eingeschaltet, läuft aber nicht -- so sieht eine fehlende Umgebung aus",
+  "py_no environment yet": "noch keine Umgebung",
+  "py_no instance": "keine Instanz",
+  "py_ready": "bereit",
+  "py_running": "läuft",
+  "py_switched off": "ausgeschaltet"
+}

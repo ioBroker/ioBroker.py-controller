@@ -1205,11 +1205,32 @@ class PyController extends utils.Adapter {
                     this.reply(obj, { error: 'No adapter name given' });
                     return;
                 }
+
+                // Checked against what is actually installed, not taken on trust. `describeAdapter`
+                // builds paths from the name it is given, and a name that belongs to no Python
+                // adapter would send it looking for an environment directory that has nothing to do
+                // with this adapter -- and, with the wrong name, `stopInstancesOf` would stop
+                // somebody else's instances on the way.
+                const known = await this.discoverPythonAdapters();
+                const adapter = known.find((candidate) => candidate.name === name);
+
+                if (!adapter) {
+                    this.reply(obj, { error: `"${name}" is not an installed Python adapter` });
+                    return;
+                }
+
                 try {
-                    await this.buildEnvironment(await this.describeAdapter(name));
+                    await this.buildEnvironment(adapter);
                     this.reply(obj, { ok: true });
                 } catch (e) {
+                    this.log.error(`Rebuilding the environment for ${name} failed: ${(e as Error).message}`);
                     this.reply(obj, { error: (e as Error).message });
+                } finally {
+                    // The states are what the settings page and anything else watch, and after a
+                    // rebuild -- successful or not -- they describe the environment as it was
+                    // before it. Re-read rather than patch: what the build produced is only known
+                    // by looking.
+                    await this.publishAdapterStates(await this.discoverPythonAdapters());
                 }
                 break;
             }

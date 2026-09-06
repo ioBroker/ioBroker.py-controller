@@ -7,17 +7,15 @@
       "text": "This adapter manages Python environments. Processes are started by js-controller.",
       "sm": 12
     },
-    "_check": {
-      "type": "sendTo",
-      "command": "check",
-      "label": "Check prerequisites",
-      "tooltip": "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter, and fills the table below. Changes nothing.",
-      "variant": "contained",
-      "showProcess": true,
-      "timeout": 30000,
-      "newLine": true,
-      "sm": 12,
-      "md": 6
+    "_environments": {
+        "type": "custom",
+        "url": "custom/customComponents.js",
+        "name": "PyControllerComponentSet/Components/Environments",
+        "i18n": true,
+        "bundlerType": "module",
+        "guiApi": 2,
+        "newLine": true,
+        "sm": 12
     },
     "_installing": {
       "type": "state",
@@ -48,6 +46,18 @@
         "installing": ".info.installing"
       },
       "hidden": "!_states.installing.val"
+    },
+    "_check": {
+      "type": "sendTo",
+      "command": "check",
+      "label": "Check prerequisites",
+      "tooltip": "Looks for uv, a writable environment directory, internet access and the state of every installed Python adapter, and fills the table below. Changes nothing.",
+      "variant": "contained",
+      "showProcess": true,
+      "timeout": 30000,
+      "newLine": true,
+      "sm": 12,
+      "md": 6
     },
     "_rebuild": {
       "newLine": true,
