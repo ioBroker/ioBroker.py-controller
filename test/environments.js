@@ -8,7 +8,7 @@
 
 import assert from 'node:assert/strict';
 
-import { pruneDecision } from '../build/environments.js';
+import { pruneDecision, venvCommand } from '../build/environments.js';
 
 describe('pruning environments', () => {
     it('keeps the environment of an installed adapter', () => {
@@ -44,5 +44,21 @@ describe('pruning environments', () => {
         // gone is the reason to delete; this is the check that the directory is what that reason
         // applies to.
         assert.equal(pruneDecision({ installed: false, stamped: false, venv: false }), 'foreign');
+    });
+});
+
+describe('venvCommand', () => {
+    const target = { venvDir: '/data/py/pyexample/venv', pythonDir: '/opt/adapters/pyexample/python' };
+
+    it('creates the environment where it belongs, replacing what is there', () => {
+        assert.deepEqual(venvCommand(target).args, ['venv', '--clear', '/data/py/pyexample/venv']);
+    });
+
+    it('runs in the adapter sources, so uv sees requires-python', () => {
+        // The whole reason this function exists. uv reads `requires-python` only from a
+        // pyproject.toml in its working directory; run anywhere else it takes the first
+        // interpreter on PATH, and on a host whose first Python is too old the install afterwards
+        // fails on a version conflict rather than uv fetching a suitable one.
+        assert.equal(venvCommand(target).options.cwd, '/opt/adapters/pyexample/python');
     });
 });

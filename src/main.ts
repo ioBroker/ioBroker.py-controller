@@ -31,7 +31,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { runCheck, type CheckOutcome, type Finding } from './check.js';
-import { pruneDecision } from './environments.js';
+import { pruneDecision, venvCommand } from './environments.js';
 import { readPackages } from './packages.js';
 import { downloadUv, managedUvPath } from './uv.js';
 
@@ -835,10 +835,11 @@ class PyController extends utils.Adapter {
                 `Building environment for ${info.name} ${info.version}${info.editable ? ' (editable, linked to its sources)' : ''} ...`,
             );
             await fs.mkdir(info.envDir, { recursive: true });
-            // --clear, because uv refuses to touch an existing environment. A rebuild is meant to
-            // replace it: reusing one that was resolved for different dependencies is what this
-            // whole stamping mechanism exists to prevent.
-            await run(this.uvPath, ['venv', '--clear', info.venvDir]);
+            // Both halves of this matter, and the working directory is the one that is easy to
+            // leave out -- see venvCommand.
+            const venv = venvCommand(info);
+
+            await run(this.uvPath, venv.args, venv.options);
             // --refresh, because uv caches the package index: a version published minutes ago is
             // otherwise reported as non-existent.
             const install = ['pip', 'install', '--refresh', '--python', info.interpreter];

@@ -57,3 +57,38 @@ export function pruneDecision(facts: EnvironmentFacts): PruneDecision {
 
     return 'remove';
 }
+
+/** Where an adapter's environment is built and what it is built from. */
+export interface VenvTarget {
+    /** The venv directory to create, `<envRoot>/<adapter>/venv` */
+    venvDir: string;
+    /** The adapter's `python/` directory, which holds its `pyproject.toml` */
+    pythonDir: string;
+}
+
+/**
+ * The `uv venv` invocation that creates an adapter's environment.
+ *
+ * Small enough to look pointless, and it is here for the one thing that is not obvious: the
+ * working directory. uv reads `requires-python` from a `pyproject.toml` in the directory it runs
+ * in, and nowhere else -- so running it anywhere but the adapter's `python/` directory silently
+ * drops the adapter's own Python requirement. Measured with a project requiring `>=3.10,<3.11`
+ * on a host that has 3.10 and 3.13:
+ *
+ *     cwd = the project      ->  Using CPython 3.10.0
+ *     cwd = anywhere else    ->  Using CPython 3.13.7
+ *
+ * The consequence is not a wrong version but a confusing failure: on a host whose first Python is
+ * older than the adapter needs, the venv is built around that one and the install afterwards ends
+ * in a resolution error naming `requires-python`, instead of uv fetching an interpreter that fits
+ * -- which it does by default when it cannot find one.
+ *
+ * `--clear` is here because uv refuses to touch an existing environment, and a rebuild is meant
+ * to replace it: reusing one resolved for different dependencies is what the stamping mechanism
+ * exists to prevent.
+ *
+ * @param target the environment to build and the sources it belongs to
+ */
+export function venvCommand(target: VenvTarget): { args: string[]; options: { cwd: string } } {
+    return { args: ['venv', '--clear', target.venvDir], options: { cwd: target.pythonDir } };
+}
