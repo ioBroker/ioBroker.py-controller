@@ -1,7 +1,7 @@
 {
   "common": {
     "name": "py-controller",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "titleLang": {
       "en": "Python Controller",
       "de": "Python Controller",
@@ -54,6 +54,10 @@
       }
     ],
     "news": {
+      "0.1.2": {
+        "en": "Fixed the virtual environment being built with the first Python on PATH, ignoring what the adapter's pyproject.toml requires",
+        "de": "Die virtuelle Umgebung wurde mit dem ersten Python im PATH gebaut, ohne das requires-python der pyproject.toml des Adapters zu beachten"
+      },
       "0.1.1": {
         "en": "Added GUI widget for rebuilding the adapter's environment",
         "de": "GUI-Element zum Neubauen der Adapter-Umgebung hinzugefügt"
