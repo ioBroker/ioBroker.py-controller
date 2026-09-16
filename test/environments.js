@@ -8,7 +8,12 @@
 
 import assert from 'node:assert/strict';
 
-import { pruneDecision, venvCommand } from '../build/environments.js';
+import {
+    interpreterFindCommand,
+    pruneDecision,
+    systemVenvCommand,
+    venvCommand,
+} from '../build/environments.js';
 
 describe('pruning environments', () => {
     it('keeps the environment of an installed adapter', () => {
@@ -60,5 +65,29 @@ describe('venvCommand', () => {
         // interpreter on PATH, and on a host whose first Python is too old the install afterwards
         // fails on a version conflict rather than uv fetching a suitable one.
         assert.equal(venvCommand(target).options.cwd, '/opt/adapters/pyexample/python');
+    });
+});
+
+describe('building without uv\'s trampoline', () => {
+    const target = { venvDir: '/data/py/pyexample/venv', pythonDir: '/opt/adapters/pyexample/python' };
+
+    it('asks uv for the interpreter where requires-python is readable', () => {
+        const find = interpreterFindCommand(target);
+
+        assert.deepEqual(find.args, ['python', 'find']);
+        // Same reason as for venvCommand: asked anywhere else, uv can name an interpreter the
+        // adapter cannot use.
+        assert.equal(find.options.cwd, '/opt/adapters/pyexample/python');
+    });
+
+    it('builds the environment with that interpreter, not with uv', () => {
+        // The point of the whole detour. `uv venv` leaves a trampoline at Scripts\\python.exe on
+        // Windows, which starts the real interpreter as a child: js-controller then supervises a
+        // stub instead of the process its adapter runs in. `python -m venv` copies the interpreter.
+        const venv = systemVenvCommand('/usr/bin/python3.13', target);
+
+        assert.equal(venv.command, '/usr/bin/python3.13');
+        assert.deepEqual(venv.args, ['-m', 'venv', '--clear', '/data/py/pyexample/venv']);
+        assert.equal(venv.options.cwd, '/opt/adapters/pyexample/python');
     });
 });

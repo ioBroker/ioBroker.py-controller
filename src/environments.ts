@@ -92,3 +92,43 @@ export interface VenvTarget {
 export function venvCommand(target: VenvTarget): { args: string[]; options: { cwd: string } } {
     return { args: ['venv', '--clear', target.venvDir], options: { cwd: target.pythonDir } };
 }
+
+/**
+ * The `uv python find` invocation that names the interpreter an environment should be built from.
+ *
+ * The working directory matters for the same reason it matters to `uv venv`: `requires-python` is
+ * read from the `pyproject.toml` uv runs in, so asking anywhere else can name an interpreter the
+ * adapter cannot use.
+ *
+ * @param target the environment to build and the sources it belongs to
+ */
+export function interpreterFindCommand(target: VenvTarget): { args: string[]; options: { cwd: string } } {
+    return { args: ['python', 'find'], options: { cwd: target.pythonDir } };
+}
+
+/**
+ * Creating the environment with the interpreter's own `venv` module, rather than with `uv venv`.
+ *
+ * Preferred because of what the two produce on Windows. `uv venv` puts a trampoline at
+ * `Scripts\python.exe`: a small launcher that starts the real interpreter as a child process and
+ * waits for it. js-controller spawns that trampoline, so the process it supervises is not the
+ * process the adapter runs in -- it reads CPU and memory off a 4 MB stub, and the PID it writes to
+ * `sigKill` is the parent of the process that has to recognise itself in it. `python -m venv`
+ * copies the real interpreter instead, so the process the controller starts is the process that
+ * runs the adapter.
+ *
+ * `--clear` for the same reason `uv venv` gets it: a rebuild replaces the environment.
+ *
+ * @param interpreter the interpreter to build from, as {@link interpreterFindCommand} named it
+ * @param target the environment to build and the sources it belongs to
+ */
+export function systemVenvCommand(
+    interpreter: string,
+    target: VenvTarget,
+): { command: string; args: string[]; options: { cwd: string } } {
+    return {
+        command: interpreter,
+        args: ['-m', 'venv', '--clear', target.venvDir],
+        options: { cwd: target.pythonDir },
+    };
+}

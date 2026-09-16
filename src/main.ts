@@ -31,7 +31,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { runCheck, type CheckOutcome, type Finding } from './check.js';
-import { pruneDecision, venvCommand } from './environments.js';
+import { interpreterFindCommand, pruneDecision, systemVenvCommand, venvCommand } from './environments.js';
 import { readPackages } from './packages.js';
 import { downloadUv, managedUvPath } from './uv.js';
 
@@ -835,11 +835,34 @@ class PyController extends utils.Adapter {
                 `Building environment for ${info.name} ${info.version}${info.editable ? ' (editable, linked to its sources)' : ''} ...`,
             );
             await fs.mkdir(info.envDir, { recursive: true });
-            // Both halves of this matter, and the working directory is the one that is easy to
-            // leave out -- see venvCommand.
-            const venv = venvCommand(info);
+            // Ask uv which interpreter fits, where `requires-python` is readable -- see
+            // interpreterFindCommand. With an answer the environment is built by that interpreter
+            // itself, which is what keeps uv's trampoline out of it; see systemVenvCommand for what
+            // the trampoline costs.
+            const find = interpreterFindCommand(info);
+            let interpreter = '';
 
-            await run(this.uvPath, venv.args, venv.options);
+            try {
+                interpreter = (await run(this.uvPath, find.args, find.options)).stdout.trim();
+            } catch (e) {
+                this.log.debug(
+                    `uv could not name an interpreter for ${info.name}: ${e instanceof Error ? e.message : String(e)}`,
+                );
+            }
+
+            if (interpreter) {
+                const venv = systemVenvCommand(interpreter, info);
+
+                await run(venv.command, venv.args, venv.options);
+            } else {
+                // Nothing to build from on this host yet. `uv venv` fetches an interpreter itself
+                // in that case, which is worth a trampoline: an environment that exists beats one
+                // that could not be created. Both halves of this matter, and the working directory
+                // is the one that is easy to leave out -- see venvCommand.
+                const venv = venvCommand(info);
+
+                await run(this.uvPath, venv.args, venv.options);
+            }
             // --refresh, because uv caches the package index: a version published minutes ago is
             // otherwise reported as non-existent.
             const install = ['pip', 'install', '--refresh', '--python', info.interpreter];
